@@ -32,6 +32,7 @@ export type FileUploadResponse = {
     client_ids: string[];
 }
 
+
 export type FileSearchResultItem = FileInfo & {
     channel_id: string;
 }
