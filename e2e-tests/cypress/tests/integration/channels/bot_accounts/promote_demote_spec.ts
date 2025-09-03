@@ -11,6 +11,7 @@
 // Group: @channels @bot_accounts
 
 import {Team} from '@mattermost/types/teams';
+
 import {createBotPatch} from '../../../support/api/bots';
 
 describe('Managing bots in Teams and Channels', () => {
@@ -37,7 +38,7 @@ describe('Managing bots in Teams and Channels', () => {
             await client.addToTeam(team.id, bot.user_id);
 
             // # Open team menu and click 'Manage Members'
-            cy.uiOpenTeamMenu('Manage Members');
+            cy.uiOpenTeamMenu('Manage members');
 
             // # Find bot
             cy.get('.more-modal__list').find('.more-modal__row').its('length').should('be.gt', 0);

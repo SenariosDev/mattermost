@@ -12,9 +12,8 @@ import {ServiceEnvironment} from '@mattermost/types/config';
 import {setSystemEmojis} from 'mattermost-redux/actions/emojis';
 import {setUrl} from 'mattermost-redux/actions/general';
 import {Client4} from 'mattermost-redux/client';
-import {Preferences} from 'mattermost-redux/constants';
 
-import {measurePageLoadTelemetry, temporarilySetPageLoadContext, trackEvent, trackSelectorMetrics} from 'actions/telemetry_actions.jsx';
+import {measurePageLoadTelemetry, temporarilySetPageLoadContext, trackEvent} from 'actions/telemetry_actions.jsx';
 import BrowserStore from 'stores/browser_store';
 
 import {makeAsyncComponent, makeAsyncPluggableComponent} from 'components/async_load';
@@ -26,7 +25,7 @@ import LoggedIn from 'components/logged_in';
 import LoggedInRoute from 'components/logged_in_route';
 import {LAUNCHING_WORKSPACE_FULLSCREEN_Z_INDEX} from 'components/preparing_workspace/launching_workspace';
 import {Animations} from 'components/preparing_workspace/steps';
-import SidebarMobileRightMenu from 'components/sidebar_mobile_right_menu';
+import Readout from 'components/readout/readout';
 
 import webSocketClient from 'client/web_websocket_client';
 import {initializePlugins} from 'plugins';
@@ -69,7 +68,6 @@ const CreateTeam = makeAsyncComponent('CreateTeam', lazy(() => import('component
 const Mfa = makeAsyncComponent('Mfa', lazy(() => import('components/mfa/mfa_controller')));
 const PreparingWorkspace = makeAsyncComponent('PreparingWorkspace', lazy(() => import('components/preparing_workspace')));
 const LaunchingWorkspace = makeAsyncComponent('LaunchingWorkspace', lazy(() => import('components/preparing_workspace/launching_workspace')));
-const CompassThemeProvider = makeAsyncComponent('CompassThemeProvider', lazy(() => import('components/compass_theme_provider/compass_theme_provider')));
 const TeamController = makeAsyncComponent('TeamController', lazy(() => import('components/team_controller')));
 const AnnouncementBarController = makeAsyncComponent('AnnouncementBarController', lazy(() => import('components/announcement_bar')));
 const SystemNotice = makeAsyncComponent('SystemNotice', lazy(() => import('components/system_notice')));
@@ -84,7 +82,7 @@ const Pluggable = makeAsyncPluggableComponent();
 
 const noop = () => {};
 
-export type Props = PropsFromRedux & RouteComponentProps;
+export type Props = PropsFromRedux & RouteComponentProps
 
 interface State {
     shouldMountAppRoutes?: boolean;
@@ -185,8 +183,6 @@ export default class Root extends React.PureComponent<Props, State> {
 
         this.props.actions.migrateRecentEmojis();
         this.props.actions.loadRecentlyUsedCustomEmojis();
-        this.props.actions.getCustomProfileAttributeFields();
-
         this.showLandingPageIfNecessary();
 
         this.applyTheme();
@@ -358,7 +354,6 @@ export default class Root extends React.PureComponent<Props, State> {
         this.initiateMeRequests();
 
         measurePageLoadTelemetry();
-        trackSelectorMetrics();
 
         // Force logout of all tabs if one tab is logged out
         window.addEventListener('storage', this.handleLogoutLoginSignal);
@@ -457,7 +452,6 @@ export default class Root extends React.PureComponent<Props, State> {
                     >
                         <Switch>
                             <LoggedInRoute
-                                theme={Preferences.THEMES.denim}
                                 path={'/admin_console'}
                                 component={AdminConsole}
                             />
@@ -492,16 +486,17 @@ export default class Root extends React.PureComponent<Props, State> {
                         from={'/_redirect/pl/:postid'}
                         to={`/${this.props.permalinkRedirectTeamName}/pl/:postid`}
                     />
-                    <CompassThemeProvider theme={this.props.theme}>
+                    <>
                         {(this.props.showLaunchingWorkspace && !this.props.location.pathname.includes('/preparing-workspace') &&
-                            <LaunchingWorkspace
-                                fullscreen={true}
-                                zIndex={LAUNCHING_WORKSPACE_FULLSCREEN_Z_INDEX}
-                                show={true}
-                                onPageView={noop}
-                                transitionDirection={Animations.Reasons.EnterFromBefore}
-                            />
+                        <LaunchingWorkspace
+                            fullscreen={true}
+                            zIndex={LAUNCHING_WORKSPACE_FULLSCREEN_Z_INDEX}
+                            show={true}
+                            onPageView={noop}
+                            transitionDirection={Animations.Reasons.EnterFromBefore}
+                        />
                         )}
+
                         <WindowSizeObserver/>
                         <ModalController/>
                         <AnnouncementBarController/>
@@ -571,7 +566,6 @@ export default class Root extends React.PureComponent<Props, State> {
                                     />
                                 ))}
                                 <LoggedInRoute
-                                    theme={this.props.theme}
                                     path={`/:team(${TEAM_NAME_PATH_PATTERN})`}
                                     component={TeamController}
                                 />
@@ -581,8 +575,8 @@ export default class Root extends React.PureComponent<Props, State> {
                         </div>
                         <Pluggable pluggableName='Global'/>
                         <AppBar/>
-                        <SidebarMobileRightMenu/>
-                    </CompassThemeProvider>
+                        <Readout/>
+                    </>
                 </Switch>
             </RootProvider>
         );

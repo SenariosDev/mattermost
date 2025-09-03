@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"maps"
 	"net/http"
 	"regexp"
 	"strings"
@@ -28,6 +29,7 @@ const (
 	TriggerwordsStartsWith = 1
 
 	MaxIntegrationResponseSize = 1024 * 1024 // Posts can be <100KB at most, so this is likely more than enough
+	MaxDialogResponseSize      = 1024 * 1024 // 1MB limit for dialog responses to prevent OOM attacks
 )
 
 var linkWithTextRegex = regexp.MustCompile(`<([^\n<\|>]+)\|([^\|\n>]+)>`)
@@ -163,7 +165,7 @@ func (a *App) TriggerWebhook(c request.CTX, payload *model.OutgoingWebhookPayloa
 				if len(webhookResp.Props) == 0 {
 					webhookResp.Props = make(model.StringInterface)
 				}
-				webhookResp.Props["webhook_display_name"] = hook.DisplayName
+				webhookResp.Props[model.PostPropsWebhookDisplayName] = hook.DisplayName
 
 				text := ""
 				if webhookResp.Text != nil {
@@ -172,7 +174,7 @@ func (a *App) TriggerWebhook(c request.CTX, payload *model.OutgoingWebhookPayloa
 				webhookResp.Attachments = a.ProcessSlackAttachments(webhookResp.Attachments)
 				// attachments is in here for slack compatibility
 				if len(webhookResp.Attachments) > 0 {
-					webhookResp.Props["attachments"] = webhookResp.Attachments
+					webhookResp.Props[model.PostPropsAttachments] = webhookResp.Attachments
 				}
 				if *a.Config().ServiceSettings.EnablePostUsernameOverride && hook.Username != "" && webhookResp.Username == "" {
 					webhookResp.Username = hook.Username
@@ -232,7 +234,7 @@ func splitWebhookPost(post *model.Post, maxPostSize int) ([]*model.Post, *model.
 	base.Message = ""
 	base.SetProps(make(map[string]any))
 	for k, v := range post.GetProps() {
-		if k != "attachments" {
+		if k != model.PostPropsAttachments {
 			base.AddProp(k, v)
 		}
 	}
@@ -259,17 +261,15 @@ func splitWebhookPost(post *model.Post, maxPostSize int) ([]*model.Post, *model.
 	split.Message = remainingText
 	splits = append(splits, split)
 
-	attachments, _ := post.GetProp("attachments").([]*model.SlackAttachment)
+	attachments, _ := post.GetProp(model.PostPropsAttachments).([]*model.SlackAttachment)
 	for _, attachment := range attachments {
 		newAttachment := *attachment
 		for {
 			lastSplit := splits[len(splits)-1]
 			newProps := make(map[string]any)
-			for k, v := range lastSplit.GetProps() {
-				newProps[k] = v
-			}
-			origAttachments, _ := newProps["attachments"].([]*model.SlackAttachment)
-			newProps["attachments"] = append(origAttachments, &newAttachment)
+			maps.Copy(newProps, lastSplit.GetProps())
+			origAttachments, _ := newProps[model.PostPropsAttachments].([]*model.SlackAttachment)
+			newProps[model.PostPropsAttachments] = append(origAttachments, &newAttachment)
 			newPropsString := model.StringInterfaceToJSON(newProps)
 			runeCount := utf8.RuneCountInString(newPropsString)
 
@@ -310,7 +310,7 @@ func (a *App) CreateWebhookPost(c request.CTX, userID string, channel *model.Cha
 	text = linkWithTextRegex.ReplaceAllString(text, "[${2}](${1})")
 
 	post := &model.Post{UserId: userID, ChannelId: channel.Id, Message: text, Type: postType, RootId: postRootId}
-	post.AddProp("from_webhook", "true")
+	post.AddProp(model.PostPropsFromWebhook, "true")
 
 	if priority != nil {
 		if priority.Priority == nil {
@@ -333,28 +333,33 @@ func (a *App) CreateWebhookPost(c request.CTX, userID string, channel *model.Cha
 
 	if *a.Config().ServiceSettings.EnablePostUsernameOverride {
 		if overrideUsername != "" {
-			post.AddProp("override_username", overrideUsername)
+			post.AddProp(model.PostPropsOverrideUsername, overrideUsername)
 		} else {
-			post.AddProp("override_username", model.DefaultWebhookUsername)
+			post.AddProp(model.PostPropsOverrideUsername, model.DefaultWebhookUsername)
 		}
 	}
 
 	if *a.Config().ServiceSettings.EnablePostIconOverride {
 		if overrideIconURL != "" {
-			post.AddProp("override_icon_url", overrideIconURL)
+			post.AddProp(model.PostPropsOverrideIconURL, overrideIconURL)
 		}
 		if overrideIconEmoji != "" {
-			post.AddProp("override_icon_emoji", overrideIconEmoji)
+			post.AddProp(model.PostPropsOverrideIconEmoji, overrideIconEmoji)
 		}
 	}
 
 	if len(props) > 0 {
 		for key, val := range props {
-			if key == "attachments" {
+			switch key {
+			case model.PostPropsAttachments:
 				if attachments, success := val.([]*model.SlackAttachment); success {
 					model.ParseSlackAttachment(post, attachments)
 				}
-			} else if key != "override_icon_url" && key != "override_username" && key != "from_webhook" {
+			case model.PostPropsOverrideIconURL,
+				model.PostPropsOverrideUsername,
+				model.PostPropsFromWebhook:
+			// Do nothing
+			default:
 				post.AddProp(key, val)
 			}
 		}
@@ -367,7 +372,7 @@ func (a *App) CreateWebhookPost(c request.CTX, userID string, channel *model.Cha
 
 	for _, split := range splits {
 		if _, err = a.CreatePost(c, split, channel, model.CreatePostFlags{}); err != nil {
-			return nil, model.NewAppError("CreateWebhookPost", "api.post.create_webhook_post.creating.app_error", nil, "err="+err.Message, http.StatusInternalServerError)
+			return nil, model.NewAppError("CreateWebhookPost", "api.post.create_webhook_post.creating.app_error", nil, "", http.StatusInternalServerError).Wrap(err)
 		}
 	}
 
@@ -765,13 +770,13 @@ func (a *App) HandleIncomingWebhook(c request.CTX, hookID string, req *model.Inc
 		req.Props = make(model.StringInterface)
 	}
 
-	req.Props["webhook_display_name"] = hook.DisplayName
+	req.Props[model.PostPropsWebhookDisplayName] = hook.DisplayName
 
 	text = a.ProcessSlackText(text)
 	req.Attachments = a.ProcessSlackAttachments(req.Attachments)
 	// attachments is in here for slack compatibility
 	if len(req.Attachments) > 0 {
-		req.Props["attachments"] = req.Attachments
+		req.Props[model.PostPropsAttachments] = req.Attachments
 		webhookType = model.PostTypeSlackAttachment
 	}
 

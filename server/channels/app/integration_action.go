@@ -343,7 +343,7 @@ func (a *App) DoActionRequest(c request.CTX, rawURL string, body []byte) (*http.
 
 	resp, httpErr := httpClient.Do(req)
 	if httpErr != nil {
-		return nil, model.NewAppError("DoActionRequest", "api.post.do_action.action_integration.app_error", nil, "err="+httpErr.Error(), http.StatusBadRequest)
+		return nil, model.NewAppError("DoActionRequest", "api.post.do_action.action_integration.app_error", nil, "", http.StatusBadRequest).Wrap(httpErr)
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -384,7 +384,7 @@ func (ch *Channels) doPluginRequest(c request.CTX, method, rawURL string, values
 	rawURL = strings.TrimPrefix(rawURL, "/")
 	inURL, err := url.Parse(rawURL)
 	if err != nil {
-		return nil, model.NewAppError("doPluginRequest", "api.post.do_action.action_integration.app_error", nil, "err="+err.Error(), http.StatusBadRequest)
+		return nil, model.NewAppError("doPluginRequest", "api.post.do_action.action_integration.app_error", nil, "", http.StatusBadRequest).Wrap(err)
 	}
 	result := strings.Split(inURL.Path, "/")
 	if len(result) < 2 {
@@ -399,7 +399,7 @@ func (ch *Channels) doPluginRequest(c request.CTX, method, rawURL string, values
 
 	base, err := url.Parse(path)
 	if err != nil {
-		return nil, model.NewAppError("doPluginRequest", "api.post.do_action.action_integration.app_error", nil, "err="+err.Error(), http.StatusBadRequest)
+		return nil, model.NewAppError("doPluginRequest", "api.post.do_action.action_integration.app_error", nil, "", http.StatusBadRequest).Wrap(err)
 	}
 
 	// merge the rawQuery params (if any) with the function's provided values
@@ -421,7 +421,7 @@ func (ch *Channels) doPluginRequest(c request.CTX, method, rawURL string, values
 	w := &LocalResponseWriter{}
 	r, err := http.NewRequest(method, base.String(), bytes.NewReader(body))
 	if err != nil {
-		return nil, model.NewAppError("doPluginRequest", "api.post.do_action.action_integration.app_error", nil, "err="+err.Error(), http.StatusBadRequest)
+		return nil, model.NewAppError("doPluginRequest", "api.post.do_action.action_integration.app_error", nil, "", http.StatusBadRequest).Wrap(err)
 	}
 	r.Header.Set("Mattermost-User-Id", c.Session().UserId)
 	r.Header.Set(model.HeaderAuth, "Bearer "+c.Session().Token)
@@ -514,8 +514,70 @@ func (a *App) SubmitInteractiveDialog(c request.CTX, request model.SubmitDialogR
 	}
 	defer resp.Body.Close()
 
+	// Limit response size to prevent OOM attacks
+	limitedReader := io.LimitReader(resp.Body, MaxDialogResponseSize)
+	body, err := io.ReadAll(limitedReader)
+	if err != nil {
+		return nil, model.NewAppError("SubmitInteractiveDialog", "app.submit_interactive_dialog.read_body_error", nil, "", http.StatusInternalServerError).Wrap(err)
+	}
+
 	var response model.SubmitDialogResponse
-	json.NewDecoder(resp.Body).Decode(&response) // Don't fail, an empty response is acceptable
+	if len(body) == 0 {
+		// Don't fail, an empty response is acceptable
+		return &response, nil
+	}
+
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		return nil, model.NewAppError("SubmitInteractiveDialog", "app.submit_interactive_dialog.decode_json_error", nil, "", http.StatusInternalServerError).Wrap(err)
+	}
+
+	return &response, nil
+}
+
+func (a *App) LookupInteractiveDialog(c request.CTX, request model.SubmitDialogRequest) (*model.LookupDialogResponse, *model.AppError) {
+	url := request.URL
+	request.URL = ""
+	request.Type = "dialog_lookup"
+
+	b, err := json.Marshal(request)
+	if err != nil {
+		return nil, model.NewAppError("LookupInteractiveDialog", "app.lookup_interactive_dialog.json_error", nil, "", http.StatusBadRequest).Wrap(err)
+	}
+
+	// Log request, regardless of whether destination is internal or external
+	c.Logger().Info("LookupInteractiveDialog POST request, through DoActionRequest",
+		mlog.String("url", url),
+		mlog.String("user_id", request.UserId),
+		mlog.String("channel_id", request.ChannelId),
+		mlog.String("team_id", request.TeamId),
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(*a.Config().ServiceSettings.OutgoingIntegrationRequestsTimeout)*time.Second)
+	defer cancel()
+	resp, appErr := a.DoActionRequest(c.WithContext(ctx), url, b)
+	if appErr != nil {
+		return nil, appErr
+	}
+	defer resp.Body.Close()
+
+	// Limit response size to prevent OOM attacks
+	limitedReader := io.LimitReader(resp.Body, MaxDialogResponseSize)
+	body, err := io.ReadAll(limitedReader)
+	if err != nil {
+		return nil, model.NewAppError("LookupInteractiveDialog", "app.lookup_interactive_dialog.read_body_error", nil, "", http.StatusInternalServerError).Wrap(err)
+	}
+
+	var response model.LookupDialogResponse
+	if len(body) == 0 {
+		// Return empty response if no data
+		return &response, nil
+	}
+
+	err = json.Unmarshal(body, &response)
+	if err != nil {
+		return nil, model.NewAppError("LookupInteractiveDialog", "app.lookup_interactive_dialog.decode_json_error", nil, "", http.StatusInternalServerError).Wrap(err)
+	}
 
 	return &response, nil
 }
