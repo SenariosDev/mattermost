@@ -340,30 +340,6 @@ $sidebarOpacityAnimationDuration: 0.15s;
         font-size: 20px;
     }
 
-    .sidebar-header {
-        display: flex;
-        overflow: hidden;
-        flex-direction: row;
-        align-items: center;
-    }
-
-    .SidebarHeaderMenuWrapper {
-        overflow: hidden;
-        padding-left: 5px;
-        border-radius: 4px;
-        background: transparent;
-
-        &:hover,
-        &:active,
-        &:focus {
-            background-color: rgba(var(--sidebar-text-rgb), 0.08);
-        }
-
-        &.MenuWrapper--open {
-            background-color: rgba(var(--sidebar-text-rgb), 0.16);
-        }
-    }
-
     .SidebarMenu {
         opacity: 1;
 
@@ -1328,45 +1304,6 @@ $sidebarOpacityAnimationDuration: 0.15s;
     #SidebarContainer {
         +.inner-wrap #app-content {
             margin-left: 305px;
-        }
-    }
-}
-
-/* context menu shown when right-clicking on a channel in the LHS when using the desktop app */
-.react-contextmenu--visible {
-    z-index: 100;
-    padding: 2px 0;
-    border: 1px solid #c6c6c6;
-    border-radius: 5px;
-    background: #f0f0f0;
-    color: black;
-    cursor: pointer;
-}
-
-.react-contextmenu-item {
-    padding: 0 22px;
-    margin: 1px 0;
-
-    &:hover {
-        background: #489dfe;
-        color: variables.$white;
-    }
-
-    &:focus,
-    span {
-        outline: none;
-    }
-}
-
-// Manual override of the global menu (and items) styling for the sidebar dropdown menu
-#sidebarDropdownMenu {
-    position: fixed;
-
-    .MenuItem {
-        >button,
-        >div,
-        >a {
-            padding: 0 32px 0 24px;
         }
     }
 }
