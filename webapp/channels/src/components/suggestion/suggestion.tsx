@@ -30,6 +30,7 @@ const SuggestionContainer = React.forwardRef<HTMLLIElement, SuggestionProps<unkn
         onMouseMove,
 
         tabIndex = -1,
+        className,
         ...otherProps
     } = props;
 
@@ -50,8 +51,9 @@ const SuggestionContainer = React.forwardRef<HTMLLIElement, SuggestionProps<unkn
     return (
         <li
             ref={ref}
-            className={classNames('suggestion-list__item', {'suggestion--selected': isSelection})}
+            className={classNames('suggestion-list__item', {'suggestion--selected': isSelection}, className)}
             role='option'
+            data-testid={isSelection ? 'suggestion-selected' : undefined}
             onClick={handleClick}
             onMouseMove={handleMouseMove}
             tabIndex={tabIndex}

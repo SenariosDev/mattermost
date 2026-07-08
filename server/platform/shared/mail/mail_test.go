@@ -6,6 +6,7 @@ package mail
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net"
 	"net/mail"
@@ -18,6 +19,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+const embeddedFileMinSize = 1500
 
 func getConfig() *SMTPConfig {
 	server := os.Getenv("MM_EMAILSETTINGS_SMTPSERVER")
@@ -147,13 +150,70 @@ func TestSendMailUsingConfig(t *testing.T) {
 	}
 }
 
+func TestSendMailPlainText(t *testing.T) {
+	cfg := getConfig()
+	var emailTo = "test@example.com"
+	var emailSubject = "Testing this email"
+	var emailCC = "test@example.com"
+
+	tests := []struct {
+		name             string
+		emailBodyHTML    string
+		expectedBodyText string
+	}{
+		{
+			name:             "Heading",
+			emailBodyHTML:    "<h1>This is a test from autobot</h1><h2>This is a subheading</h2>",
+			expectedBodyText: "***************************\nThis is a test from autobot\n***************************\n\n--------------------\nThis is a subheading\n--------------------",
+		},
+		{
+			name:             "List",
+			emailBodyHTML:    "<ul><li>Item 1</li><li>Item 2</li></ul>",
+			expectedBodyText: "* Item 1\n* Item 2",
+		},
+		{
+			name:             "Inline formatting",
+			emailBodyHTML:    "<p><strong>Strong</strong> and <a href='https://example.com'>link</a>",
+			expectedBodyText: "*Strong* and link ( https://example.com )",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			DeleteMailBox(emailTo)
+
+			err := SendMailUsingConfig(emailTo, emailSubject, test.emailBodyHTML, cfg, true, "", "", "", emailCC, "")
+			require.NoError(t, err, "Should connect to the SMTP Server")
+
+			var resultsMailbox JSONMessageHeaderInbucket
+			err = RetryInbucket(5, func() error {
+				var err2 error
+				resultsMailbox, err2 = GetMailBox(emailTo)
+				return err2
+			})
+
+			if err != nil {
+				t.Log("No email was received, maybe due load on the server. Failing this test")
+				t.Error(err)
+			} else {
+				require.NotEmpty(t, resultsMailbox, "Mailbox should contain at least one message")
+				require.Contains(t, resultsMailbox[0].To[0], emailTo, "Wrong To: recipient")
+				resultsEmail, err := GetMessageFromMailbox(emailTo, resultsMailbox[0].ID)
+				require.NoError(t, err, "Could not get message from mailbox")
+				require.Contains(t, test.emailBodyHTML, resultsEmail.Body.HTML, "Wrong received message %s", resultsEmail.Body.Text)
+				require.Contains(t, resultsEmail.Body.Text, test.expectedBodyText, "Wrong message plain text conversion %s", resultsEmail.Body.Text)
+			}
+		})
+	}
+}
+
 func TestSendMailWithEmbeddedFilesUsingConfig(t *testing.T) {
 	cfg := getConfig()
 
-	var emailTo = "test@example.com"
-	var emailSubject = "Testing this email"
-	var emailBody = "This is a test from autobot"
-	var emailCC = "test@example.com"
+	emailTo := fmt.Sprintf("embedded-files-%d@example.com", time.Now().UnixNano())
+	emailSubject := "Testing this email"
+	emailBody := "This is a test from autobot"
+	emailCC := emailTo
 
 	//Delete all the messages before check the sample email
 	DeleteMailBox(emailTo)
@@ -167,10 +227,26 @@ func TestSendMailWithEmbeddedFilesUsingConfig(t *testing.T) {
 
 	//Check if the email was send to the right email address
 	var resultsMailbox JSONMessageHeaderInbucket
-	err3 := RetryInbucket(5, func() error {
+	var resultsEmail JSONMessageInbucket
+	err3 := RetryInbucket(10, func() error {
 		var err error
 		resultsMailbox, err = GetMailBox(emailTo)
-		return err
+		if err != nil {
+			return err
+		}
+		if len(resultsMailbox) == 0 {
+			return fmt.Errorf("no messages in mailbox")
+		}
+
+		resultsEmail, err = GetMessageFromMailbox(emailTo, resultsMailbox[0].ID)
+		if err != nil {
+			return err
+		}
+		if resultsEmail.Size <= embeddedFileMinSize {
+			return fmt.Errorf("message size %d does not yet reflect embedded attachments", resultsEmail.Size)
+		}
+
+		return nil
 	})
 	if err3 != nil {
 		t.Log(err3)
@@ -178,11 +254,9 @@ func TestSendMailWithEmbeddedFilesUsingConfig(t *testing.T) {
 	} else {
 		if len(resultsMailbox) > 0 {
 			require.Contains(t, resultsMailbox[0].To[0], emailTo, "Wrong To: recipient")
-			resultsEmail, err := GetMessageFromMailbox(emailTo, resultsMailbox[0].ID)
-			require.NoError(t, err, "Could not get message from mailbox")
 			require.Contains(t, emailBody, resultsEmail.Body.Text, "Wrong received message %s", resultsEmail.Body.Text)
 			// Usign the message size because the inbucket API doesn't return embedded attachments through the API
-			require.Greater(t, resultsEmail.Size, 1500, "the file size should be more because the embedded attachments")
+			require.Greater(t, resultsEmail.Size, embeddedFileMinSize, "the file size should be more because the embedded attachments")
 		}
 	}
 }
@@ -197,13 +271,13 @@ func TestSendMailUsingConfigAdvanced(t *testing.T) {
 	file1, err := os.CreateTemp("", "*")
 	require.NoError(t, err)
 	defer os.Remove(file1.Name())
-	file1.Write([]byte("hello world"))
+	file1.WriteString("hello world")
 	file1.Close()
 	file2, err := os.CreateTemp("", "*")
 
 	require.NoError(t, err)
 	defer os.Remove(file2.Name())
-	file2.Write([]byte("foo bar"))
+	file2.WriteString("foo bar")
 	file2.Close()
 
 	embeddedFiles := map[string]io.Reader{

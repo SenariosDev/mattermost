@@ -12,6 +12,7 @@ import (
 	"os"
 	"sort"
 	"testing"
+	"time"
 
 	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/stretchr/testify/require"
@@ -22,6 +23,7 @@ import (
 	"github.com/hashicorp/go-multierror"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var UserCmd = &cobra.Command{
@@ -87,25 +89,6 @@ var SendPasswordResetEmailCmd = &cobra.Command{
 	Long:    "Send users an email to reset their password",
 	Example: "  user reset-password user@example.com",
 	RunE:    withClient(sendPasswordResetEmailCmdF),
-}
-
-var UpdateUserEmailCmd = &cobra.Command{
-	Use:        "email [user] [new email]",
-	Short:      "Change email of the user",
-	Long:       "Change the email address associated with a user.",
-	Example:    "  user email testuser user@example.com",
-	Deprecated: "Please use 'mmctl user edit email' instead.",
-	RunE:       withClient(updateUserEmailCmdF),
-}
-
-var UpdateUsernameCmd = &cobra.Command{
-	Use:        "username [user] [new username]",
-	Short:      "Change username of the user",
-	Long:       "Change username of the user.",
-	Example:    "  user username testuser newusername",
-	Deprecated: "Please use 'mmctl user edit username' instead.",
-	Args:       cobra.ExactArgs(2),
-	RunE:       withClient(updateUsernameCmdF),
 }
 
 var ChangePasswordUserCmd = &cobra.Command{
@@ -186,16 +169,6 @@ Permanently deletes one or multiple users along with all related information inc
 	RunE:    withClient(deleteUsersCmdF),
 }
 
-var DeleteAllUsersCmd = &cobra.Command{
-	Use:     "deleteall",
-	Short:   "Delete all users and all posts. Local command only.",
-	Long:    "Permanently delete all users and all related information including posts. This command can only be run in local mode.",
-	Example: "  user deleteall",
-	Args:    cobra.NoArgs,
-	PreRun:  localOnlyPrecheck,
-	RunE:    withClient(deleteAllUsersCmdF),
-}
-
 var SearchUserCmd = &cobra.Command{
 	Use:     "search [users]",
 	Short:   "Search for users",
@@ -238,6 +211,38 @@ var DemoteUserToGuestCmd = &cobra.Command{
 	Example: "  user demote user1 user2",
 	RunE:    withClient(demoteUserToGuestCmdF),
 	Args:    cobra.MinimumNArgs(1),
+}
+
+var UserStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Get a user's status",
+	Long:  "Get a user's presence status: online, away, dnd or offline.",
+	Example: `  # You can get the status of the currently authenticated user
+  $ mmctl user status
+
+  # You can get the status of a specific user
+  $ mmctl user status --user user@example.com
+
+  # In local mode there is no authenticated user, so the --user flag is required
+  $ mmctl --local user status --user user@example.com`,
+	Args: cobra.NoArgs,
+	RunE: withClient(userStatusGetCmdF),
+}
+
+var UserStatusSetCmd = &cobra.Command{
+	Use:   "set [status]",
+	Short: "Set a user's status",
+	Long:  "Set a user's presence status. Allowed values are online, away, dnd and offline.",
+	Example: `  # You can set the status of the currently authenticated user
+  $ mmctl user status set away
+
+  # You can set the status of a specific user
+  $ mmctl user status set --user user@example.com dnd
+
+  # You can set a "dnd" status that expires at a given time (ISO 8601)
+  $ mmctl user status set --user user@example.com --dnd-end-time 2100-01-02T15:04:05-07:00 dnd`,
+	Args: cobra.ExactArgs(1),
+	RunE: withClient(userStatusSetCmdF),
 }
 
 var UserConvertCmd = &cobra.Command{
@@ -378,13 +383,13 @@ func init() {
 	UserCreateCmd.Flags().Bool("disable-welcome-email", false, "Optional. If supplied, the new user will not receive a welcome email. Defaults to false")
 
 	DeleteUsersCmd.Flags().Bool("confirm", false, "Confirm you really want to delete the user and a DB backup has been performed")
-	DeleteAllUsersCmd.Flags().Bool("confirm", false, "Confirm you really want to delete the user and a DB backup has been performed")
 
 	ListUsersCmd.Flags().Int("page", 0, "Page number to fetch for the list of users")
 	ListUsersCmd.Flags().Int("per-page", DefaultPageSize, "Number of users to be fetched")
-	ListUsersCmd.Flags().Bool("all", false, "Fetch all users. --page flag will be ignore if provided")
+	ListUsersCmd.Flags().Bool("all", false, "Fetch all users. --page flag will be ignored if provided")
 	ListUsersCmd.Flags().String("team", "", "If supplied, only users belonging to this team will be listed")
-	ListUsersCmd.Flags().Bool("inactive", false, "If supplied, only users which are inactive will be fetch")
+	ListUsersCmd.Flags().Bool("inactive", false, "If supplied, only users which are inactive will be fetched")
+	ListUsersCmd.Flags().String("role", "", "If supplied, only users with the given role will be fetched")
 
 	UserConvertCmd.Flags().Bool("bot", false, "If supplied, convert users to bots")
 	UserConvertCmd.Flags().Bool("user", false, "If supplied, convert a bot to a user")
@@ -396,6 +401,10 @@ func init() {
 	UserConvertCmd.Flags().String("lastname", "", "The last name for the converted user account. Required when the \"bot\" flag is set")
 	UserConvertCmd.Flags().String("locale", "", "The locale (ex: en, fr) for converted new user account. Required when the \"bot\" flag is set")
 	UserConvertCmd.Flags().Bool("system-admin", false, "If supplied, the converted user will be a system administrator. Defaults to false. Required when the \"bot\" flag is set")
+
+	UserStatusCmd.Flags().String("user", "", "Optional. The user (specified by email, username or ID) whose status to get. Defaults to the currently authenticated user. Required in local mode.")
+	UserStatusSetCmd.Flags().String("user", "", "Optional. The user (specified by email, username or ID) whose status to set. Defaults to the currently authenticated user. Required in local mode.")
+	UserStatusSetCmd.Flags().String("dnd-end-time", "", "Optional. The time at which a \"dnd\" status expires, formatted as ISO 8601 (e.g. 2006-01-02T15:04:05-07:00). Only valid with the \"dnd\" status.")
 
 	ChangePasswordUserCmd.Flags().StringP("current", "c", "", "The current password of the user. Use only if changing your own password")
 	ChangePasswordUserCmd.Flags().StringP("password", "p", "", "The new password for the user")
@@ -441,13 +450,10 @@ Global Flags:
 		UserCreateCmd,
 		UserInviteCmd,
 		SendPasswordResetEmailCmd,
-		UpdateUserEmailCmd,
-		UpdateUsernameCmd,
 		ChangePasswordUserCmd,
 		ResetUserMfaCmd,
 		UserEditCmd,
 		DeleteUsersCmd,
-		DeleteAllUsersCmd,
 		SearchUserCmd,
 		ListUsersCmd,
 		VerifyUserEmailWithoutTokenCmd,
@@ -455,7 +461,11 @@ Global Flags:
 		MigrateAuthCmd,
 		PromoteGuestToUserCmd,
 		DemoteUserToGuestCmd,
+		UserStatusCmd,
 		PreferenceCmd,
+	)
+	UserStatusCmd.AddCommand(
+		UserStatusSetCmd,
 	)
 	PreferenceCmd.AddCommand(
 		PreferenceListCmd,
@@ -642,62 +652,6 @@ func sendPasswordResetEmailCmdF(c client.Client, cmd *cobra.Command, args []stri
 	return result.ErrorOrNil()
 }
 
-func updateUserEmailCmdF(c client.Client, cmd *cobra.Command, args []string) error {
-	printer.SetSingle(true)
-
-	if len(args) != 2 {
-		return errors.New("expected two arguments. See help text for details")
-	}
-
-	newEmail := args[1]
-
-	if !model.IsValidEmail(newEmail) {
-		return errors.New("invalid email: '" + newEmail + "'")
-	}
-
-	user, err := getUserFromArg(c, args[0])
-	if err != nil {
-		return err
-	}
-
-	user.Email = newEmail
-
-	ruser, _, err := c.UpdateUser(context.TODO(), user)
-	if err != nil {
-		return errors.New(err.Error())
-	}
-
-	printer.PrintT("User {{.Username}} updated successfully", ruser)
-
-	return nil
-}
-
-func updateUsernameCmdF(c client.Client, cmd *cobra.Command, args []string) error {
-	printer.SetSingle(true)
-
-	newUsername := args[1]
-
-	if !model.IsValidUsername(newUsername) {
-		return errors.New("invalid username: '" + newUsername + "'")
-	}
-
-	user := getUserFromUserArg(c, args[0])
-	if user == nil {
-		return errors.New("unable to find user '" + args[0] + "'")
-	}
-
-	user.Username = newUsername
-
-	ruser, _, err := c.UpdateUser(context.TODO(), user)
-	if err != nil {
-		return errors.New(err.Error())
-	}
-
-	printer.PrintT("User {{.Username}} updated successfully", ruser)
-
-	return nil
-}
-
 func changePasswordUserCmdF(c client.Client, cmd *cobra.Command, args []string) error {
 	password, _ := cmd.Flags().GetString("password")
 	current, _ := cmd.Flags().GetString("current")
@@ -796,23 +750,6 @@ func deleteUsersCmdF(c client.Client, cmd *cobra.Command, args []string) error {
 	return errs.ErrorOrNil()
 }
 
-func deleteAllUsersCmdF(c client.Client, cmd *cobra.Command, args []string) error {
-	confirmFlag, _ := cmd.Flags().GetBool("confirm")
-	if !confirmFlag {
-		if err := getConfirmation("Are you sure you want to permanently delete all user accounts?", true); err != nil {
-			return err
-		}
-	}
-
-	if _, err := c.PermanentDeleteAllUsers(context.TODO()); err != nil {
-		return err
-	}
-
-	defer printer.Print("All users successfully deleted")
-
-	return nil
-}
-
 // userOut is the output format for users.
 type userOut struct {
 	*model.User
@@ -851,7 +788,8 @@ first_name: {{.FirstName}}
 last_name: {{.LastName}}
 email: {{.Email}}
 auth_service: {{.AuthService}}
-auth_data: {{.AuthData}}`
+auth_data: {{.AuthData}}
+roles: {{.Roles}}`
 		if i > 0 {
 			tpl = "------------------------------\n" + tpl
 		}
@@ -867,6 +805,7 @@ func ResetListUsersCmd(t *testing.T) *cobra.Command {
 	require.NoError(t, ListUsersCmd.Flags().Set("per-page", "200"))
 	require.NoError(t, ListUsersCmd.Flags().Set("all", "false"))
 	require.NoError(t, ListUsersCmd.Flags().Set("team", ""))
+	require.NoError(t, ListUsersCmd.Flags().Set("role", ""))
 	require.NoError(t, ListUsersCmd.Flags().Set("inactive", "false"))
 
 	return ListUsersCmd
@@ -895,6 +834,11 @@ func listUsersCmdF(c client.Client, command *cobra.Command, args []string) error
 		return err
 	}
 
+	roleName, err := command.Flags().GetString("role")
+	if err != nil {
+		return err
+	}
+
 	if showAll {
 		page = 0
 	}
@@ -915,8 +859,12 @@ func listUsersCmdF(c client.Client, command *cobra.Command, args []string) error
 	if team != nil {
 		params.Add("in_team", team.Id)
 	}
+	if roleName != "" {
+		params.Add("role", roleName)
+	}
 
 	tpl := `{{.Id}}: {{.Username}} ({{.Email}})`
+
 	for {
 		users, _, err := c.GetUsersWithCustomQueryParameters(context.TODO(), page, perPage, params.Encode(), "")
 		if err != nil {
@@ -975,18 +923,20 @@ func userConvertCmdF(c client.Client, cmd *cobra.Command, userArgs []string) err
 func convertUserToBot(c client.Client, _ *cobra.Command, userArgs []string) error {
 	users, err := getUsersFromArgs(c, userArgs)
 	if err != nil {
-		printer.PrintError(err.Error())
+		return err
 	}
+
+	var multiErr *multierror.Error
 	for _, user := range users {
 		bot, _, err := c.ConvertUserToBot(context.TODO(), user.Id)
 		if err != nil {
-			printer.PrintError(err.Error())
+			multiErr = multierror.Append(multiErr, err)
 			continue
 		}
 
 		printer.PrintT("{{.Username}} converted to bot.", bot)
 	}
-	return nil
+	return multiErr.ErrorOrNil()
 }
 
 func convertBotToUser(c client.Client, cmd *cobra.Command, userArgs []string) error {
@@ -1008,7 +958,7 @@ func convertBotToUser(c client.Client, cmd *cobra.Command, userArgs []string) er
 			return errors.New("username is empty")
 		}
 	} else {
-		up.Username = model.NewPointer(username)
+		up.Username = new(username)
 	}
 
 	email, _ := cmd.Flags().GetString("email")
@@ -1017,27 +967,27 @@ func convertBotToUser(c client.Client, cmd *cobra.Command, userArgs []string) er
 			return errors.New("email is empty")
 		}
 	} else {
-		up.Email = model.NewPointer(email)
+		up.Email = new(email)
 	}
 
 	nickname, _ := cmd.Flags().GetString("nickname")
 	if nickname != "" {
-		up.Nickname = model.NewPointer(nickname)
+		up.Nickname = new(nickname)
 	}
 
 	firstname, _ := cmd.Flags().GetString("firstname")
 	if firstname != "" {
-		up.FirstName = model.NewPointer(firstname)
+		up.FirstName = new(firstname)
 	}
 
 	lastname, _ := cmd.Flags().GetString("lastname")
 	if lastname != "" {
-		up.LastName = model.NewPointer(lastname)
+		up.LastName = new(lastname)
 	}
 
 	locale, _ := cmd.Flags().GetString("locale")
 	if locale != "" {
-		up.Locale = model.NewPointer(locale)
+		up.Locale = new(locale)
 	}
 
 	systemAdmin, _ := cmd.Flags().GetBool("system-admin")
@@ -1163,6 +1113,91 @@ func demoteUserToGuestCmdF(c client.Client, _ *cobra.Command, userArgs []string)
 	}
 
 	return errs.ErrorOrNil()
+}
+
+// resolveStatusTargetUser resolves the user whose status a command operates on.
+// When the --user flag is omitted, it falls back to the currently authenticated
+// user, which is unavailable in local mode.
+func resolveStatusTargetUser(c client.Client, cmd *cobra.Command) (*model.User, error) {
+	userArg, _ := cmd.Flags().GetString("user")
+	if userArg != "" {
+		return getUserFromArg(c, userArg)
+	}
+
+	if viper.GetBool("local") {
+		return nil, errors.New("the --user flag is required in local mode")
+	}
+
+	me, _, err := c.GetMe(context.TODO(), "")
+	if err != nil {
+		return nil, fmt.Errorf("could not retrieve the current user: %w", err)
+	}
+	return me, nil
+}
+
+func userStatusGetCmdF(c client.Client, cmd *cobra.Command, _ []string) error {
+	printer.SetSingle(true)
+
+	user, err := resolveStatusTargetUser(c, cmd)
+	if err != nil {
+		return err
+	}
+
+	status, _, err := c.GetUserStatus(context.TODO(), user.Id, "")
+	if err != nil {
+		return fmt.Errorf("could not get status for user %s: %w", user.Id, err)
+	}
+
+	printer.PrintT("@"+user.Username+" has status: {{.Status}}", status)
+	return nil
+}
+
+func userStatusSetCmdF(c client.Client, cmd *cobra.Command, args []string) error {
+	printer.SetSingle(true)
+
+	newStatus := args[0]
+	switch newStatus {
+	case model.StatusOnline, model.StatusAway, model.StatusDnd, model.StatusOffline:
+	default:
+		return fmt.Errorf("invalid status %q, must be one of: %s, %s, %s, %s", newStatus, model.StatusOnline, model.StatusAway, model.StatusDnd, model.StatusOffline)
+	}
+
+	dndEndTimeArg, _ := cmd.Flags().GetString("dnd-end-time")
+	if dndEndTimeArg != "" && newStatus != model.StatusDnd {
+		return fmt.Errorf("the --dnd-end-time flag can only be used with the %q status", model.StatusDnd)
+	}
+
+	var dndEndTime int64
+	if dndEndTimeArg != "" {
+		endTime, err := time.Parse(time.RFC3339, dndEndTimeArg)
+		if err != nil {
+			return fmt.Errorf("invalid dnd-end-time %q, expected RFC3339 format (e.g. 2006-01-02T15:04:05-07:00 or 2006-01-02T15:04:05Z)", dndEndTimeArg)
+		}
+		if !endTime.After(time.Now()) {
+			return errors.New("dnd-end-time must be in the future")
+		}
+		// DNDEndTime is expressed in seconds rather than milliseconds.
+		dndEndTime = endTime.Unix()
+	}
+
+	user, err := resolveStatusTargetUser(c, cmd)
+	if err != nil {
+		return err
+	}
+
+	status := &model.Status{
+		UserId:     user.Id,
+		Status:     newStatus,
+		DNDEndTime: dndEndTime,
+	}
+
+	updatedStatus, _, err := c.UpdateUserStatus(context.TODO(), user.Id, status)
+	if err != nil {
+		return fmt.Errorf("could not set status for user %s: %w", user.Id, err)
+	}
+
+	printer.PrintT("Set status of @"+user.Username+" to status: {{.Status}}", updatedStatus)
+	return nil
 }
 
 func userEditCompletionF(ctx context.Context, c client.Client, cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {

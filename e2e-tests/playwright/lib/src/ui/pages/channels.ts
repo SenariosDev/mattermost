@@ -1,11 +1,19 @@
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
 // See LICENSE.txt for license information.
 
-import {expect, Page} from '@playwright/test';
+import type {Page} from '@playwright/test';
+import {expect} from '@playwright/test';
 import {waitUntil} from 'async-wait-until';
 
-import {ChannelsPost, components} from '@/ui/components';
-import SettingsModal from '@/ui/components/channels/settings/settings_modal';
+import type {
+    ChannelNotificationPreferencesModal,
+    ChannelsPost,
+    SettingsModal,
+    TeamSettingsModal,
+    InvitePeopleModal,
+    MembersInvitedModal,
+} from '@/ui/components';
+import {BrowseChannelsModal, ChannelSettingsModal, CreateTeamForm, NewChannelModal, components} from '@/ui/components';
 import {duration} from '@/util';
 export default class ChannelsPage {
     readonly channels = 'Channels';
@@ -16,24 +24,42 @@ export default class ChannelsPage {
     readonly userAccountMenuButton;
     readonly searchBox;
     readonly centerView;
-    readonly scheduledDraftModal;
     readonly sidebarLeft;
     readonly sidebarRight;
     readonly appBar;
     readonly userProfilePopover;
     readonly messagePriority;
 
-    readonly findChannelsModal;
+    readonly channelSettingsModal;
+    readonly channelNotificationPreferencesModal;
+    readonly createTeamForm;
     readonly deletePostModal;
-    readonly settingsModal;
+    readonly findChannelsModal;
+    readonly newChannelModal;
+    readonly browseChannelsModal;
+    readonly directChannelsModal;
+    readonly keyboardShortcutsModal;
+    public invitePeopleModal: InvitePeopleModal | undefined;
+    public membersInvitedModal: MembersInvitedModal | undefined;
     readonly profileModal;
+    readonly settingsModal;
+    readonly teamSettingsModal;
+    readonly scheduledDraftModal;
+    readonly scheduleMessageModal;
+    readonly burnOnReadConfirmationModal;
+    readonly archivedChannelMessage;
+
     readonly postContainer;
     readonly postDotMenu;
     readonly postReminderMenu;
     readonly userAccountMenu;
+    readonly teamMenu;
+
     readonly emojiGifPickerPopup;
     readonly scheduleMessageMenu;
-    readonly scheduleMessageModal;
+
+    readonly searchResultsContainer;
+    readonly searchResultItems;
 
     constructor(page: Page) {
         this.page = page;
@@ -44,42 +70,91 @@ export default class ChannelsPage {
         this.centerView = new components.ChannelsCenterView(page.getByTestId('channel_view'), page);
         this.sidebarLeft = new components.ChannelsSidebarLeft(page.locator('#SidebarContainer'));
         this.sidebarRight = new components.ChannelsSidebarRight(page.locator('#sidebar-right'));
-        this.appBar = new components.ChannelsAppBar(page.locator('.app-bar'));
+        this.appBar = new components.ChannelsAppBar(page.getByTestId('app-bar'));
         this.messagePriority = new components.MessagePriority(page.locator('body'));
         this.userAccountMenuButton = page.getByRole('button', {name: "User's account menu"});
 
         // Modals
-        this.findChannelsModal = new components.FindChannelsModal(page.getByRole('dialog', {name: 'Find Channels'}));
+        this.channelSettingsModal = new ChannelSettingsModal(page.getByRole('dialog', {name: 'Channel Settings'}));
+        this.channelNotificationPreferencesModal = new components.ChannelNotificationPreferencesModal(
+            page.getByRole('dialog', {name: 'Notification Preferences'}),
+        );
+        this.keyboardShortcutsModal = page.getByRole('dialog', {name: /Keyboard shortcuts/});
+        this.createTeamForm = new CreateTeamForm(page.getByTestId('create-team-form'));
         this.deletePostModal = new components.DeletePostModal(page.locator('#deletePostModal'));
-        this.settingsModal = new components.SettingsModal(page.getByRole('dialog', {name: 'Settings'}));
+        this.findChannelsModal = new components.FindChannelsModal(page.getByRole('dialog', {name: 'Find Channels'}));
+        this.newChannelModal = new NewChannelModal(page.getByRole('dialog', {name: 'Create a new channel'}));
+        this.browseChannelsModal = new BrowseChannelsModal(page.getByRole('dialog', {name: 'Browse Channels'}));
+        this.directChannelsModal = new components.DirectChannelsModal(
+            page.getByRole('dialog', {name: 'Direct Messages'}),
+        );
         this.profileModal = new components.ProfileModal(page.getByRole('dialog', {name: 'Profile'}));
+        this.settingsModal = new components.SettingsModal(page.getByRole('dialog', {name: 'Settings'}));
+        this.teamSettingsModal = new components.TeamSettingsModal(page.getByRole('dialog', {name: 'Team Settings'}));
+        this.burnOnReadConfirmationModal = new components.BurnOnReadConfirmationModal(
+            page.getByRole('dialog').filter({hasText: /burn|delete/i}),
+        );
 
         // Menus
         this.postDotMenu = new components.PostDotMenu(page.getByRole('menu', {name: 'Post extra options'}));
         this.postReminderMenu = new components.PostReminderMenu(page.getByRole('menu', {name: 'Set a reminder for:'}));
         this.userAccountMenu = new components.UserAccountMenu(page.locator('#userAccountMenu'));
         this.scheduleMessageMenu = new components.ScheduleMessageMenu(page.locator('#dropdown_send_post_options'));
+        this.teamMenu = new components.TeamMenu(page.locator('#sidebarTeamMenu'));
 
         // Popovers
         this.emojiGifPickerPopup = new components.EmojiGifPicker(page.locator('#emojiGifPicker'));
-        this.scheduledDraftModal = new components.ScheduledDraftModal(page.locator('div.modal-content'));
+        this.scheduledDraftModal = new components.ScheduledDraftModal(page.getByRole('dialog', {name: /scheduled/i}));
         this.scheduleMessageModal = new components.ScheduleMessageModal(
             page.getByRole('dialog', {name: 'Schedule message'}),
         );
-        this.userProfilePopover = new components.UserProfilePopover(page.locator('.user-profile-popover'));
+        this.userProfilePopover = new components.UserProfilePopover(page.getByTestId('user-profile-popover'));
 
         // Posts
-        this.postContainer = page.locator('div.post-message__text');
+        this.postContainer = page.getByTestId('post-message-text');
+        this.archivedChannelMessage = page.locator('#channelArchivedMessage');
 
-        page.locator('#channelHeaderDropdownMenu');
+        // Search results
+        this.searchResultsContainer = page.locator('#search-items-container');
+        this.searchResultItems = page.getByTestId('search-item-container');
+    }
+
+    /**
+     * Locates a search result item containing the given text.
+     * @param text
+     */
+    getSearchResultItem(text: string) {
+        return this.page.getByTestId('search-item-container').filter({hasText: text});
     }
 
     async toBeVisible() {
         await this.centerView.toBeVisible();
     }
 
+    /**
+     * `toNotContainText` verifies if the page does not contain the specified text.
+     * @param text Text to be verified not in the page
+     */
+    async toNotContainText(text: string) {
+        await expect(this.page.locator('body')).not.toContainText(text);
+    }
+
     async getLastPost() {
         return this.centerView.getLastPost();
+    }
+
+    async getInvitePeopleModal(teamDisplayName: string) {
+        this.invitePeopleModal = new components.InvitePeopleModal(
+            this.page.getByRole('dialog', {name: `Invite people to ${teamDisplayName}`}),
+        );
+        return this.invitePeopleModal;
+    }
+
+    async getMembersInvitedModal(teamDisplayName: string) {
+        this.membersInvitedModal = new components.MembersInvitedModal(
+            this.page.getByRole('dialog', {name: `invited to ${teamDisplayName}`}),
+        );
+        return this.membersInvitedModal;
     }
 
     async goto(teamName = '', channelName = '') {
@@ -91,6 +166,14 @@ export default class ChannelsPage {
                 channelsUrl += `${prefix}/${channelName}`;
             }
         }
+        await this.page.goto(channelsUrl);
+
+        return channelsUrl;
+    }
+
+    // Force the /messages route for group-message slugs that do not start with '@'.
+    async gotoMessage(teamName: string, channelName: string) {
+        const channelsUrl = `/${teamName}/messages/${channelName}`;
         await this.page.goto(channelsUrl);
 
         return channelsUrl;
@@ -129,26 +212,97 @@ export default class ChannelsPage {
         return {rootPost, sidebarRight, lastPost};
     }
 
-    async openChannelSettings(): Promise<SettingsModal> {
-        await this.centerView.header.openChannelMenu();
-        await this.page.locator('#channelSettings[role="menuitem"]').click();
-        await this.settingsModal.toBeVisible();
+    async openTeamSettings(): Promise<TeamSettingsModal> {
+        await this.page.locator('#sidebarTeamMenuButton').click();
+        await this.page.getByText('Team settings').first().click();
+        await this.teamSettingsModal.toBeVisible();
 
+        return this.teamSettingsModal;
+    }
+
+    async openChannelSettings(): Promise<ChannelSettingsModal> {
+        await this.centerView.header.openChannelMenu();
+
+        const channelSettingsMenuItem = this.page.getByRole('menuitem', {name: 'Channel Settings'});
+        const moreActionsMenuItem = this.page.getByRole('menuitem', {name: /More actions/i});
+
+        const channelSettingsVisible = await channelSettingsMenuItem.isVisible({timeout: 1500}).catch(() => false);
+        if (!channelSettingsVisible) {
+            const moreActionsVisible = await moreActionsMenuItem.isVisible({timeout: 1500}).catch(() => false);
+            if (moreActionsVisible) {
+                await moreActionsMenuItem.click();
+            }
+        }
+
+        await expect(channelSettingsMenuItem).toBeVisible();
+        await channelSettingsMenuItem.click();
+        await this.channelSettingsModal.toBeVisible();
+
+        return this.channelSettingsModal;
+    }
+
+    async openChannelNotificationPreferences(): Promise<ChannelNotificationPreferencesModal> {
+        await this.centerView.header.openChannelMenu();
+        await this.page.getByRole('menuitem', {name: 'Notification Preferences'}).click();
+        await this.channelNotificationPreferencesModal.toBeVisible();
+
+        return this.channelNotificationPreferencesModal;
+    }
+
+    async closeGroupMessage() {
+        await this.centerView.header.openChannelMenu();
+        await this.page.getByRole('menuitem', {name: 'Close Group Message'}).click();
+    }
+
+    async openSettings(): Promise<SettingsModal> {
+        await this.globalHeader.openSettings();
+        await this.settingsModal.toBeVisible();
         return this.settingsModal;
     }
 
+    async openNewChannelModal(): Promise<NewChannelModal> {
+        await this.sidebarLeft.browseOrCreateChannelButton.click();
+        await this.page.getByText('Create new channel').click();
+        await this.newChannelModal.toBeVisible();
+
+        return this.newChannelModal;
+    }
+
+    async openBrowseChannelsModal(): Promise<BrowseChannelsModal> {
+        await this.sidebarLeft.browseOrCreateChannelButton.click();
+        await this.page.getByText('Browse channels').click();
+        await this.browseChannelsModal.toBeVisible();
+
+        return this.browseChannelsModal;
+    }
+
+    async openDirectChannelsModal() {
+        await this.sidebarLeft.openDirectMessageButton.click();
+        await this.directChannelsModal.toBeVisible();
+
+        return this.directChannelsModal;
+    }
+
+    async openCreateTeamForm(): Promise<CreateTeamForm> {
+        await this.sidebarLeft.teamMenuButton.click();
+        await this.teamMenu.toBeVisible();
+        await this.teamMenu.clickCreateTeam();
+        await this.createTeamForm.toBeVisible();
+
+        return this.createTeamForm;
+    }
+
     async newChannel(name: string, channelType: string) {
-        await this.page.locator('#browseOrAddChannelMenuButton').click();
-        await this.page.locator('#createNewChannelMenuItem').click();
-        await this.page.locator('#input_new-channel-modal-name').fill(name);
+        const newChannelModal = await this.openNewChannelModal();
+        await newChannelModal.displayNameInput.fill(name);
 
         if (channelType === 'P') {
-            await this.page.locator('#public-private-selector-button-P').click();
+            await newChannelModal.privateTypeButton.click();
         } else {
-            await this.page.locator('#public-private-selector-button-O').click();
+            await newChannelModal.publicTypeButton.click();
         }
 
-        await this.page.getByText('Create channel').click();
+        await newChannelModal.create();
     }
 
     async openUserAccountMenu() {
@@ -185,7 +339,7 @@ export default class ChannelsPage {
         await this.scheduleMessageMenu.toBeVisible();
         await this.scheduleMessageMenu.selectCustomTime();
 
-        return await this.scheduleMessageModal.scheduleMessage(dayFromToday, timeOptionIndex);
+        return this.scheduleMessageModal.scheduleMessage(dayFromToday, timeOptionIndex);
     }
 
     async scheduleMessageFromThread(message: string, dayFromToday: number = 0, timeOptionIndex: number = 0) {
@@ -197,6 +351,10 @@ export default class ChannelsPage {
         await this.scheduleMessageMenu.toBeVisible();
         await this.scheduleMessageMenu.selectCustomTime();
 
-        return await this.scheduleMessageModal.scheduleMessage(dayFromToday, timeOptionIndex);
+        return this.scheduleMessageModal.scheduleMessage(dayFromToday, timeOptionIndex);
+    }
+
+    async getFlaggedPostViewDetailButton(flaggedPostId: string) {
+        return this.page.getByTestId(`data-spillage-action-view-details_${flaggedPostId}`);
     }
 }

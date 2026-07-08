@@ -1,24 +1,11 @@
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
 // See LICENSE.txt for license information.
 
-import {act, screen, fireEvent} from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 import React from 'react';
 
-import {renderWithContext} from 'tests/react_testing_utils';
+import {act, fireEvent, renderWithContext, screen, userEvent} from 'tests/react_testing_utils';
 
 import Input from './input';
-
-// Mock the WithTooltip component to avoid ref issues
-jest.mock('components/with_tooltip', () => ({
-    __esModule: true,
-    default: ({children}: {children: React.ReactNode}) => children,
-}));
-
-// Mock the CloseCircleIcon component to avoid ref issues
-jest.mock('@mattermost/compass-icons/components', () => ({
-    CloseCircleIcon: () => <div data-testid='close-circle-icon'/>,
-}));
 
 describe('components/widgets/inputs/Input', () => {
     test('should match snapshot', () => {
@@ -48,13 +35,11 @@ describe('components/widgets/inputs/Input', () => {
         expect(inputElement).toBeInTheDocument();
 
         // Find the clear button's div container
-        const iconElement = screen.getByTestId('close-circle-icon');
+        const iconElement = document.querySelector('.Input__clear');
         expect(iconElement).toBeInTheDocument();
 
         // Click directly on the icon element
-        await act(async () => {
-            userEvent.click(iconElement);
-        });
+        await userEvent.click(iconElement!);
 
         // Verify onClear was called
         expect(onClear).toHaveBeenCalledTimes(1);
@@ -76,6 +61,7 @@ describe('components/widgets/inputs/Input', () => {
 
             const input = container.querySelector('input') as HTMLInputElement;
 
+            // Trigger validation on blur - fireEvent used because userEvent doesn't have direct focus/blur methods
             await act(async () => {
                 fireEvent.focus(input);
                 fireEvent.blur(input);
@@ -121,7 +107,7 @@ describe('components/widgets/inputs/Input', () => {
 
             // Click the button
             await act(async () => {
-                fireEvent.click(button);
+                await userEvent.click(button);
             });
 
             // Should validate after click
@@ -167,16 +153,11 @@ describe('components/widgets/inputs/Input', () => {
             // Find the input
             const inputElement = screen.getByDisplayValue('a');
 
+            // Clear the input first
             // Simulate change to trigger validation
-            await act(async () => {
-                // Clear the input first
-                userEvent.clear(inputElement);
-
-                // Then type the new value
-                userEvent.type(inputElement, 'a');
-
-                inputElement.blur();
-            });
+            await userEvent.clear(inputElement);
+            await userEvent.type(inputElement, 'a');
+            act(() => inputElement.blur());
 
             // Check for error styling
             const fieldset = screen.getByTestId('input-wrapper');

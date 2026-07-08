@@ -29,7 +29,17 @@ server.post('/boolean_dialog_request', onBooleanDialogRequest);
 server.post('/multiselect_dialog_request', onMultiSelectDialogRequest);
 server.post('/dynamic_select_dialog_request', onDynamicSelectDialogRequest);
 server.post('/dynamic_select_source', onDynamicSelectSource);
+server.post('/dialog/field-refresh', onFieldRefreshDialogRequest);
+server.post('/dialog/multistep', onMultistepDialogRequest);
+server.post('/field_refresh_source', onFieldRefreshSource);
+server.post('/datetime_dialog_request', onDateTimeDialogRequest);
+server.post('/datetime_dialog_submit', onDateTimeDialogSubmit);
 server.post('/slack_compatible_message_response', postSlackCompatibleMessageResponse);
+server.post('/mm_blocks_integration', postMmBlocksIntegration);
+server.post('/mm_blocks_integration_update', postMmBlocksIntegrationUpdate);
+server.post('/mm_blocks_integration_static_select', postMmBlocksIntegrationStaticSelect);
+server.post('/mm_blocks_integration_echo_query', postMmBlocksIntegrationEchoQuery);
+server.post('/mm_blocks_integration_echo_context', postMmBlocksIntegrationEchoContext);
 server.post('/send_message_to_channel', postSendMessageToChannel);
 server.post('/post_outgoing_webhook', postOutgoingWebhook);
 server.post('/send_oauth_credentials', postSendOauthCredentials);
@@ -37,7 +47,13 @@ server.get('/start_oauth', getStartOAuth);
 server.get('/complete_oauth', getCompleteOauth);
 server.post('/post_oauth_message', postOAuthMessage);
 
-server.listen(port, () => console.log(`Webhook test server listening on port ${port}!`));
+server.listen(port, (err) => {
+    if (err) {
+        console.error(err);
+        throw err;
+    }
+    console.log(`Webhook test server listening on port ${port}!`);
+});
 
 function ping(req, res) {
     return res.json({
@@ -54,7 +70,17 @@ function ping(req, res) {
             'POST /multiselect_dialog_request',
             'POST /dynamic_select_dialog_request',
             'POST /dynamic_select_source',
+            'POST /dialog/field-refresh',
+            'POST /dialog/multistep',
+            'POST /field_refresh_source',
+            'POST /datetime_dialog_request',
+            'POST /datetime_dialog_submit',
             'POST /slack_compatible_message_response',
+            'POST /mm_blocks_integration',
+            'POST /mm_blocks_integration_update',
+            'POST /mm_blocks_integration_static_select',
+            'POST /mm_blocks_integration_echo_query',
+            'POST /mm_blocks_integration_echo_context',
             'POST /send_message_to_channel',
             'POST /post_outgoing_webhook',
             'POST /send_oauth_credentials',
@@ -146,6 +172,81 @@ function postSlackCompatibleMessageResponse(req, res) {
     return res.json({
         ephemeral_text: spoiler,
         skip_slack_parsing: skipSlackParsing,
+    });
+}
+
+/**
+ * Mattermost mm_blocks external actions POST the same integration envelope as legacy message buttons.
+ * @see model.PostActionIntegrationResponse
+ */
+function postMmBlocksIntegration(req, res) {
+    const userName = req.body && req.body.user_name ? req.body.user_name : 'unknown';
+
+    res.setHeader('Content-Type', 'application/json');
+    return res.status(200).json({
+        ephemeral_text: `Playwright mm_blocks integration OK (user: ${userName}).`,
+        skip_slack_parsing: true,
+    });
+}
+
+/**
+ * Returns a PostActionIntegrationResponse update so the interactive post is edited in-place
+ * (persisted webhook post or ephemeral mm_blocks post).
+ */
+function postMmBlocksIntegrationUpdate(req, res) {
+    res.setHeader('Content-Type', 'application/json');
+    return res.status(200).json({
+        update: {
+            message: 'E2E mm_blocks post updated (message field).',
+            props: {
+                mm_blocks: [
+                    {
+                        type: 'text',
+                        text: 'PLAYWRIGHT_MM_BLOCKS_UPDATED',
+                    },
+                ],
+            },
+        },
+        skip_slack_parsing: true,
+    });
+}
+
+/** Echoes URL query parameters Mattermost merged onto the integration request (action query + block query). */
+function postMmBlocksIntegrationEchoQuery(req, res) {
+    const entries = Object.keys(req.query || {}).
+        sort().
+        map((k) => `${k}=${String(req.query[k])}`);
+    const summary = entries.join('&');
+
+    res.setHeader('Content-Type', 'application/json');
+    return res.status(200).json({
+        ephemeral_text: `Playwright mm_blocks query OK (${summary})`,
+        skip_slack_parsing: true,
+    });
+}
+
+/** Echoes `context.test_marker` from the Mattermost integration POST body for mm_blocks external actions. */
+function postMmBlocksIntegrationEchoContext(req, res) {
+    const ctx = (req.body && req.body.context) || {};
+    const marker =
+        typeof ctx.test_marker === 'string' ? ctx.test_marker : JSON.stringify(ctx.test_marker ?? null);
+
+    res.setHeader('Content-Type', 'application/json');
+    return res.status(200).json({
+        ephemeral_text: `Playwright mm_blocks context OK (test_marker: ${marker}).`,
+        skip_slack_parsing: true,
+    });
+}
+
+/** Echoes `context.selected_option` from the Mattermost integration POST for mm_blocks static_select. */
+function postMmBlocksIntegrationStaticSelect(req, res) {
+    const selected = req.body && req.body.context && req.body.context.selected_option;
+    const label = typeof selected === 'string' ? selected : JSON.stringify(selected ?? null);
+
+    res.setHeader('Content-Type', 'application/json');
+    return res.status(200).json({
+        ephemeral_text: `Playwright mm_blocks static_select OK (selected_option: ${label}).`,
+        skip_slack_parsing: true,
     });
 }
 
@@ -260,16 +361,90 @@ function onDynamicSelectSource(req, res) {
     ];
 
     // Filter options based on search text
-    const filteredOptions = searchText ?
-        allOptions.filter((option) =>
-            option.text.toLowerCase().includes(searchText) ||
-            option.value.toLowerCase().includes(searchText)) :
-        allOptions.slice(0, 6); // Limit to first 6 if no search
+    const filteredOptions = searchText ? allOptions.filter((option) =>
+        option.text.toLowerCase().includes(searchText) ||
+            option.value.toLowerCase().includes(searchText)) : allOptions.slice(0, 6); // Limit to first 6 if no search
 
     res.setHeader('Content-Type', 'application/json');
     return res.json({
         items: filteredOptions,
     });
+}
+
+function onDateTimeDialogRequest(req, res) {
+    const {body} = req;
+    if (body.trigger_id) {
+        let dialog;
+        const command = body.text ? body.text.trim() : '';
+
+        // Use focused dialog functions based on command parameter
+        switch (command) {
+        case 'basic':
+            dialog = webhookUtils.getBasicDateDialog(body.trigger_id, webhookBaseUrl);
+            break;
+        case 'mindate':
+            dialog = webhookUtils.getMinDateConstraintDialog(body.trigger_id, webhookBaseUrl);
+            break;
+        case 'interval':
+            dialog = webhookUtils.getCustomIntervalDialog(body.trigger_id, webhookBaseUrl);
+            break;
+        case 'relative':
+            dialog = webhookUtils.getRelativeDateDialog(body.trigger_id, webhookBaseUrl);
+            break;
+        case 'timezone-manual':
+            dialog = webhookUtils.getTimezoneManualDialog(body.trigger_id, webhookBaseUrl);
+            break;
+        default:
+            // Default to basic datetime dialog for backward compatibility
+            dialog = webhookUtils.getBasicDateTimeDialog(body.trigger_id, webhookBaseUrl);
+            break;
+        }
+        console.log('Opening DateTime dialog', dialog.dialog.title);
+        openDialog(dialog);
+    }
+
+    res.setHeader('Content-Type', 'application/json');
+    return res.json({text: 'DateTime dialog triggered via slash command!'});
+}
+
+function onDateTimeDialogSubmit(req, res) {
+    console.log('DateTime dialog submit handler called!');
+    const {body} = req;
+
+    res.setHeader('Content-Type', 'application/json');
+
+    // Log the submitted datetime values for debugging
+    console.log('DateTime dialog submission:', JSON.stringify(body, null, 2));
+
+    // Extract datetime values from submission
+    const submission = body.submission || {};
+    const eventDate = submission.event_date;
+    const meetingTime = submission.meeting_time;
+    const relativeDate = submission.relative_date;
+    const relativeDateTime = submission.relative_datetime;
+
+    // Create a success message with the submitted values
+    let message = 'Form submitted successfully! ';
+    if (eventDate || meetingTime || relativeDate || relativeDateTime) {
+        message += 'Submitted values: ';
+        if (eventDate) {
+            message += `Event Date: ${eventDate}, `;
+        }
+        if (meetingTime) {
+            message += `Meeting Time: ${meetingTime}, `;
+        }
+        if (relativeDate) {
+            message += `Relative Date: ${relativeDate}, `;
+        }
+        if (relativeDateTime) {
+            message += `Relative DateTime: ${relativeDateTime}, `;
+        }
+        message = message.slice(0, -2); // Remove trailing comma and space
+    }
+
+    // Send success response that will appear as a post in the channel
+    sendSysadminResponse(message, body.channel_id);
+    return res.json({text: message});
 }
 
 function onDialogSubmit(req, res) {
@@ -281,11 +456,49 @@ function onDialogSubmit(req, res) {
     if (body.cancelled) {
         message = 'Dialog cancelled';
         sendSysadminResponse(message, body.channel_id);
-    } else {
-        message = 'Dialog submitted';
-        sendSysadminResponse(message, body.channel_id);
+        return res.json({text: message});
     }
 
+    // Check if this is a multistep submission
+    if (body.callback_id === 'multistep_callback') {
+        const currentState = body.state || '';
+
+        // Determine next step based on current state
+        if (currentState === 'step1') {
+            // Move to step 2
+            const nextForm = webhookUtils.getMultistepStep2Dialog(null, webhookBaseUrl);
+            return res.json({
+                type: 'form',
+                form: nextForm,
+            });
+        } else if (currentState === 'step2') {
+            // Move to step 3
+            const nextForm = webhookUtils.getMultistepStep3Dialog(null, webhookBaseUrl);
+            return res.json({
+                type: 'form',
+                form: nextForm,
+            });
+        }
+
+        // Final step - complete the multistep
+        const submission = body.submission || {};
+        message = `Multistep completed successfully! Final step values: ${JSON.stringify(submission, null, 2)}`;
+        sendSysadminResponse(message, body.channel_id);
+        return res.json({text: message});
+    }
+
+    // Check if this is a field refresh dialog submission
+    if (body.callback_id === 'field_refresh_callback') {
+        const submission = body.submission || {};
+        message = `Field refresh dialog submitted successfully! Values: ${JSON.stringify(submission, null, 2)}`;
+        sendSysadminResponse(message, body.channel_id);
+        return res.json({text: message});
+    }
+
+    // Regular dialog submission
+    message = 'Dialog submitted';
+
+    sendSysadminResponse(message, body.channel_id);
     return res.json({text: message});
 }
 
@@ -369,4 +582,109 @@ function postOutgoingWebhook(req, res) {
         response_type: responseType,
     };
     res.status(200).send(response);
+}
+
+function onFieldRefreshDialogRequest(req, res) {
+    const {body} = req;
+    if (body.trigger_id) {
+        const dialog = webhookUtils.getFieldRefreshDialog(body.trigger_id, webhookBaseUrl);
+        openDialog(dialog);
+    }
+
+    res.setHeader('Content-Type', 'application/json');
+    return res.json({text: 'Field refresh dialog triggered via slash command!'});
+}
+
+function onMultistepDialogRequest(req, res) {
+    const {body} = req;
+    if (body.trigger_id) {
+        const dialog = webhookUtils.getMultistepStep1Dialog(body.trigger_id, webhookBaseUrl);
+        openDialog(dialog);
+    }
+
+    res.setHeader('Content-Type', 'application/json');
+    return res.json({text: 'Multistep dialog triggered via slash command!'});
+}
+
+function onFieldRefreshSource(req, res) {
+    const {body} = req;
+    const submission = body.submission || {};
+    const projectType = submission.project_type;
+    const projectName = submission.project_name || '';
+
+    res.setHeader('Content-Type', 'application/json');
+
+    // Return updated form based on project type selection
+    const elements = [
+        {
+            display_name: 'Project Name',
+            name: 'project_name',
+            type: 'text',
+            placeholder: 'Enter project name',
+            default: projectName,
+            optional: false,
+        },
+        {
+            display_name: 'Project Type',
+            name: 'project_type',
+            type: 'select',
+            refresh: true,
+            placeholder: 'Select project type...',
+            default: projectType,
+            options: [
+                {text: 'Web Application', value: 'web'},
+                {text: 'Mobile App', value: 'mobile'},
+                {text: 'API Service', value: 'api'},
+            ],
+        },
+    ];
+
+    // Add different fields based on project type
+    if (projectType === 'web') {
+        elements.push({
+            display_name: 'Framework',
+            name: 'framework',
+            type: 'select',
+            placeholder: 'Select framework...',
+            options: [
+                {text: 'React', value: 'react'},
+                {text: 'Vue', value: 'vue'},
+                {text: 'Angular', value: 'angular'},
+            ],
+        });
+    } else if (projectType === 'mobile') {
+        elements.push({
+            display_name: 'Platform',
+            name: 'platform',
+            type: 'select',
+            placeholder: 'Select platform...',
+            options: [
+                {text: 'iOS', value: 'ios'},
+                {text: 'Android', value: 'android'},
+                {text: 'React Native', value: 'react-native'},
+            ],
+        });
+    } else if (projectType === 'api') {
+        elements.push({
+            display_name: 'Language',
+            name: 'language',
+            type: 'select',
+            placeholder: 'Select language...',
+            options: [
+                {text: 'Go', value: 'go'},
+                {text: 'Node.js', value: 'nodejs'},
+                {text: 'Python', value: 'python'},
+            ],
+        });
+    }
+
+    return res.json({
+        type: 'form',
+        form: {
+            title: 'Field Refresh Demo',
+            introduction_text: 'Enter project name then select type to see different fields',
+            submit_label: 'Submit',
+            elements,
+        },
+    });
 }

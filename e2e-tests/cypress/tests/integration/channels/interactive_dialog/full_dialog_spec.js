@@ -44,7 +44,7 @@ describe('Interactive Dialog - Apps Form', () => {
         cy.apiCreateTeam('test-team', 'Test Team').then(({team}) => {
             cy.visit(`/${team.name}`);
 
-            const webhookBaseUrl = Cypress.env().webhookBaseUrl;
+            const webhookBaseUrl = Cypress.expose().webhookBaseUrl;
 
             const command = {
                 auto_complete: false,
@@ -128,7 +128,7 @@ describe('Interactive Dialog - Apps Form', () => {
                             cy.get('span').should('have.text', element.placeholder);
                         });
                     } else {
-                        cy.get(`#${element.name}`).should('be.visible').and('have.value', element.default).and('have.attr', 'placeholder', element.placeholder);
+                        cy.get(`#${element.name}`).should('be.visible').and('have.value', element.default || '').and('have.attr', 'placeholder', element.placeholder || '');
                     }
 
                     // * Verify that input element are given with the correct type of "input", "email", "number" and "password".

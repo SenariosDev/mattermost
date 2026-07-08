@@ -1,12 +1,15 @@
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
 // See LICENSE.txt for license information.
 
-import {Locator, expect} from '@playwright/test';
+import type {Locator} from '@playwright/test';
+import {expect} from '@playwright/test';
 
 import ChannelsPostCreate from './post_create';
 import ChannelsPostEdit from './post_edit';
 import ChannelsPost from './post';
 import ScheduledPostIndicator from './scheduled_post_indicator';
+
+import {hexToRgb} from '@/util';
 
 export default class ChannelsSidebarRight {
     readonly container: Locator;
@@ -22,24 +25,32 @@ export default class ChannelsSidebarRight {
     readonly postEdit;
     readonly currentVersionEditedPosttext;
     readonly restorePreviousPostVersionIcon;
+    readonly channelBanner;
+    readonly notificationSeparator;
 
     constructor(container: Locator) {
         this.container = container;
 
         this.scheduledPostIndicator = new ScheduledPostIndicator(container.getByTestId('scheduledPostIndicator'));
-        this.scheduledDraftChannelInfoMessage = container.locator('div.ScheduledPostIndicator span');
-        this.scheduledDraftSeeAllLink = container.locator('a:has-text("See all")');
-        this.scheduledDraftChannelInfoMessageText = container.locator('span:has-text("Message scheduled for")');
-        this.rhsPostBody = container.locator('.post-message__text');
+        this.scheduledDraftChannelInfoMessage = container.getByTestId('scheduledPostIndicator').locator('span');
+        this.scheduledDraftSeeAllLink = container
+            .getByTestId('scheduledPostIndicator')
+            .getByRole('link', {name: 'See all.'});
+        this.scheduledDraftChannelInfoMessageText = container
+            .getByTestId('scheduledPostIndicator')
+            .getByText(/Message scheduled for/);
+        this.rhsPostBody = container.getByTestId('post-message-text');
         this.postCreate = new ChannelsPostCreate(container.getByTestId('comment-create'), true);
-        this.closeButton = container.locator('.sidebar--right__close');
+        this.closeButton = container.getByRole('button', {name: 'Close'});
 
         this.editTextbox = container.locator('#edit_textbox');
-        this.postEdit = new ChannelsPostEdit(container.locator('.post-edit__container'));
+        this.postEdit = new ChannelsPostEdit(container.getByTestId('post-edit-container'));
         this.currentVersionEditedPosttext = (postID: any) => container.locator(`#rhsPostMessageText_${postID} p`);
         this.restorePreviousPostVersionIcon = container.locator(
             'button[aria-label="Select to restore an old message."]',
         );
+        this.channelBanner = container.getByTestId('channel_banner_container');
+        this.notificationSeparator = container.locator('.NotificationSeparator');
     }
 
     async toBeVisible() {
@@ -85,8 +96,8 @@ export default class ChannelsSidebarRight {
         await expect(this.container).not.toBeVisible();
     }
 
-    async toContainText(text: string) {
-        await expect(this.container).toContainText(text);
+    async toContainText(text: string, timeout?: number) {
+        await expect(this.container).toContainText(text, {timeout});
     }
 
     async verifyCurrentVersionPostMessage(postID: string | null, postMessageContent: string) {
@@ -96,5 +107,22 @@ export default class ChannelsSidebarRight {
     async restorePreviousPostVersion() {
         await this.restorePreviousPostVersionIcon.isVisible();
         await this.restorePreviousPostVersionIcon.click();
+    }
+
+    async assertChannelBanner(text: string, backgroundColor: string) {
+        await expect(this.channelBanner).toBeVisible();
+
+        const actualText = await this.channelBanner.textContent();
+        expect(actualText).toBe(text);
+
+        const actualBackgroundColor = await this.channelBanner.evaluate((el) => {
+            return window.getComputedStyle(el).getPropertyValue('background-color');
+        });
+
+        expect(actualBackgroundColor).toBe(hexToRgb(backgroundColor));
+    }
+
+    async assertChannelBannerNotVisible() {
+        await expect(this.channelBanner).not.toBeVisible();
     }
 }

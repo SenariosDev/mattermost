@@ -10,12 +10,12 @@
 // Stage: @prod
 // Group: @channels @channel @channel_settings
 
-import * as TIMEOUTS from '../../../fixtures/timeouts';
-import {getRandomId} from '../../../utils';
+import * as TIMEOUTS from '@/fixtures/timeouts';
+import {getRandomId} from '@/utils';
 
 describe('Channel routing', () => {
-    let testTeam: any;
-    let testUser: any;
+    let testTeam: Cypress.Team;
+    let testUser: Cypress.UserProfile;
 
     before(() => {
         cy.apiInitSetup().then(({team, user}) => {
@@ -48,6 +48,9 @@ describe('Channel routing', () => {
         // # Assert the error occurred with the appropriate message
         cy.get('.SaveChangesPanel').should('contain', 'There are errors in the form above');
         cy.get('.url-input-error').should('contain', 'User IDs are not allowed in channel URLs.');
+
+        // # Reset the changes so modal can be closed
+        cy.get('[data-testid="SaveChangesPanel__cancel-btn"]').click();
 
         // # Close the modal
         cy.get('.GenericModal .modal-header button[aria-label="Close"]').click();
