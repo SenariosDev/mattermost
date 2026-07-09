@@ -5,7 +5,6 @@ import classNames from 'classnames';
 import React from 'react';
 import {DragDropContext, Droppable} from 'react-beautiful-dnd';
 import type {DroppableProvided, DropResult} from 'react-beautiful-dnd';
-import Scrollbars from 'react-custom-scrollbars';
 import {injectIntl, FormattedMessage} from 'react-intl';
 import type {WrappedComponentProps} from 'react-intl';
 import type {RouteComponentProps} from 'react-router-dom';
@@ -14,6 +13,7 @@ import type {Team} from '@mattermost/types/teams';
 
 import Permissions from 'mattermost-redux/constants/permissions';
 
+import Scrollbars from 'components/common/scrollbars';
 import SystemPermissionGate from 'components/permissions_gates/system_permission_gate';
 import TeamButton from 'components/team_sidebar/components/team_button';
 
@@ -34,34 +34,7 @@ export interface Props extends PropsFromRedux, WrappedComponentProps {
 type State = {
     showOrder: boolean;
     teamsOrder: Team[];
-}
-
-export function renderView(props: Props) {
-    return (
-        <div
-            {...props}
-            className='scrollbar--view'
-        />
-    );
-}
-
-export function renderThumbHorizontal(props: Props) {
-    return (
-        <div
-            {...props}
-            className='scrollbar--horizontal'
-        />
-    );
-}
-
-export function renderThumbVertical(props: Props) {
-    return (
-        <div
-            {...props}
-            className='scrollbar--vertical'
-        />
-    );
-}
+};
 
 export class TeamSidebar extends React.PureComponent<Props, State> {
     constructor(props: Props) {
@@ -150,13 +123,16 @@ export class TeamSidebar extends React.PureComponent<Props, State> {
 
     componentDidUpdate(prevProps: Props) {
         // TODO: debounce
-        if (prevProps.currentTeamId !== this.props.currentTeamId && this.props.enableWebSocketEventScope) {
+        if (prevProps.currentTeamId !== this.props.currentTeamId) {
             WebSocketClient.updateActiveTeam(this.props.currentTeamId);
         }
     }
 
     componentDidMount() {
-        this.props.actions.getTeams(0, 200);
+        // for_directory: the "join another team" indicator is a discovery surface,
+        // so policy-governed teams the user can't join are hidden here too — even
+        // for admins, who are otherwise exempt on the System Console listing.
+        this.props.actions.getTeams(0, 200, false, false, true);
         document.addEventListener('keydown', this.handleKeyDown);
         document.addEventListener('keyup', this.handleKeyUp);
     }
@@ -317,17 +293,10 @@ export class TeamSidebar extends React.PureComponent<Props, State> {
                 role='navigation'
                 aria-labelledby='teamSidebarWrapper'
             >
-                <div
-                    className='team-wrapper'
-                    id='teamSidebarWrapper'
-                >
-                    <Scrollbars
-                        autoHide={true}
-                        autoHideTimeout={500}
-                        autoHideDuration={500}
-                        renderThumbHorizontal={renderThumbHorizontal}
-                        renderThumbVertical={renderThumbVertical}
-                        renderView={renderView}
+                <Scrollbars>
+                    <div
+                        className='team-wrapper'
+                        id='teamSidebarWrapper'
                     >
                         <DragDropContext
                             onDragEnd={this.onDragEnd}
@@ -350,8 +319,8 @@ export class TeamSidebar extends React.PureComponent<Props, State> {
                             </Droppable>
                         </DragDropContext>
                         {joinableTeams}
-                    </Scrollbars>
-                </div>
+                    </div>
+                </Scrollbars>
                 {plugins}
             </div>
         );

@@ -4,62 +4,111 @@
 import {useMemo} from 'react';
 import {useDispatch} from 'react-redux';
 
-import type {AccessControlVisualAST, AccessControlTestResult} from '@mattermost/types/access_control';
-import type {UserPropertyField} from '@mattermost/types/properties';
+import type {AccessControlVisualAST, AccessControlTestResult, AccessControlPolicy, AccessControlPolicyActiveUpdate, PolicySimulationResponse, PolicySimulationByUsersParams} from '@mattermost/types/access_control';
+import type {ChannelMembership} from '@mattermost/types/channels';
+import type {JobTypeBase} from '@mattermost/types/jobs';
+import type {UserPropertyField} from '@mattermost/types/properties_user';
 
 import {
     getAccessControlFields,
     getVisualAST,
     searchUsersForExpression,
+    getAccessControlPolicy,
+    createAccessControlPolicy,
+    deleteAccessControlPolicy,
+    simulatePolicyForUsers,
+    validateExpressionAgainstRequester,
+    createAccessControlSyncJob,
+    updateAccessControlPoliciesActive,
 } from 'mattermost-redux/actions/access_control';
+import {getChannelMembers} from 'mattermost-redux/actions/channels';
+import {createJob} from 'mattermost-redux/actions/jobs';
 import type {ActionResult} from 'mattermost-redux/types/actions';
 
 export interface ChannelAccessControlActions {
     getAccessControlFields: (after: string, limit: number) => Promise<ActionResult<UserPropertyField[]>>;
     getVisualAST: (expression: string) => Promise<ActionResult<AccessControlVisualAST>>;
     searchUsers: (expression: string, term: string, after: string, limit: number) => Promise<ActionResult<AccessControlTestResult>>;
+    getChannelPolicy: (channelId: string) => Promise<ActionResult<AccessControlPolicy>>;
+    saveChannelPolicy: (policy: AccessControlPolicy) => Promise<ActionResult<AccessControlPolicy>>;
+    deleteChannelPolicy: (policyId: string) => Promise<ActionResult>;
+    getChannelMembers: (channelId: string, page?: number, perPage?: number) => Promise<ActionResult<ChannelMembership[]>>;
+    createJob: (job: JobTypeBase & {data: any}) => Promise<ActionResult>;
+    updateAccessControlPoliciesActive: (statuses: AccessControlPolicyActiveUpdate[]) => Promise<ActionResult>;
+    validateExpressionAgainstRequester: (expression: string) => Promise<ActionResult<{requester_matches: boolean}>>;
+    createAccessControlSyncJob: (jobData: {policy_id?: string; team_id?: string}) => Promise<ActionResult>;
+
+    /**
+     * Run the dual-lane PDP simulation against a draft policy for an
+     * explicit set of users (with optional per-user session-attribute
+     * overrides). channelId/teamId are injected from the surrounding
+     * scope so the picker only needs to supply policy + actions + users.
+     */
+    simulatePolicyForUsers: (params: Omit<PolicySimulationByUsersParams, 'channel_id' | 'team_id'>) => Promise<ActionResult<PolicySimulationResponse>>;
 }
 
 /**
- * Hook that provides access control actions for both System Console and Channel Settings contexts.
- * This is a thin wrapper around the existing redux actions that provides:
- * - Consistent interface for both system and channel contexts
- * - Future extensibility for channel-specific logic (This is the main reason for this hook)
- * - Simplified usage in components without needing to import redux actions directly
- * - Improved readability and maintainability of components
- * - Easier testing and mocking in unit tests
- * - Centralized access control logic for easier updates and changes
- * - Single source of truth for ABAC actions for the channel context
- *
- * @param channelId - Optional channel ID for channel-specific context (used for future enhancements)
+ * Provides ABAC actions scoped to channel or team context.
+ * Injects channelId/teamId into all API calls for permission verification.
+ * @param channelId - Optional channel ID for channel-specific context. Required for channel admin contexts, optional for system admin contexts.
  * @returns Object containing access control action functions
  */
-export const useChannelAccessControlActions = (): ChannelAccessControlActions => { // eventually accept channelId for future use in channel-specific logic
+export const useChannelAccessControlActions = (channelId?: string, teamId?: string): ChannelAccessControlActions => {
     const dispatch = useDispatch();
 
     return useMemo(() => ({
-
-        /**
-         * Get available user attribute fields for access control rules
-         */
         getAccessControlFields: (after: string, limit: number) => {
-            return dispatch(getAccessControlFields(after, limit));
+            return dispatch(getAccessControlFields(after, limit, channelId, teamId));
         },
 
-        /**
-         * Convert a CEL expression to a visual AST for table editor display
-         */
         getVisualAST: (expression: string) => {
-            return dispatch(getVisualAST(expression));
+            return dispatch(getVisualAST(expression, channelId, teamId));
         },
 
-        /**
-         * Search users that match a given access control expression
-         */
         searchUsers: (expression: string, term: string, after: string, limit: number) => {
-            return dispatch(searchUsersForExpression(expression, term, after, limit));
+            return dispatch(searchUsersForExpression(expression, term, after, limit, channelId, teamId));
         },
-    }), [dispatch]);
+
+        getChannelPolicy: (channelId: string) => {
+            return dispatch(getAccessControlPolicy(channelId));
+        },
+
+        saveChannelPolicy: (policy: AccessControlPolicy) => {
+            return dispatch(createAccessControlPolicy(policy, teamId));
+        },
+
+        deleteChannelPolicy: (policyId: string) => {
+            return dispatch(deleteAccessControlPolicy(policyId, teamId));
+        },
+
+        getChannelMembers: (channelId: string, page = 0, perPage = 200) => {
+            return dispatch(getChannelMembers(channelId, page, perPage));
+        },
+
+        createJob: (job: JobTypeBase & {data: any}) => {
+            return dispatch(createJob(job));
+        },
+
+        validateExpressionAgainstRequester: (expression: string) => {
+            return dispatch(validateExpressionAgainstRequester(expression, channelId, teamId));
+        },
+
+        createAccessControlSyncJob: (jobData: {policy_id?: string; team_id?: string}) => {
+            return dispatch(createAccessControlSyncJob(jobData));
+        },
+
+        updateAccessControlPoliciesActive: (statuses: AccessControlPolicyActiveUpdate[]) => {
+            return dispatch(updateAccessControlPoliciesActive(statuses, teamId));
+        },
+
+        simulatePolicyForUsers: (params: Omit<PolicySimulationByUsersParams, 'channel_id' | 'team_id'>) => {
+            return dispatch(simulatePolicyForUsers({
+                ...params,
+                channel_id: channelId,
+                team_id: teamId,
+            }));
+        },
+    }), [dispatch, channelId, teamId]);
 };
 
 export default useChannelAccessControlActions;

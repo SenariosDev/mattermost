@@ -9,7 +9,9 @@ import isNil from 'lodash/isNil';
 import moment from 'moment';
 import React from 'react';
 import type {LinkHTMLAttributes} from 'react';
+import type {MessageDescriptor} from 'react-intl';
 
+import {isFirefox, isSafari} from '@mattermost/shared/utils/user_agent';
 import type {Channel} from '@mattermost/types/channels';
 import type {Address} from '@mattermost/types/cloud';
 import type {FileInfo} from '@mattermost/types/files';
@@ -27,8 +29,7 @@ import {
 import {getPost as getPostAction} from 'mattermost-redux/actions/posts';
 import {getTeamByName as getTeamByNameAction} from 'mattermost-redux/actions/teams';
 import {Client4} from 'mattermost-redux/client';
-import {Preferences, General} from 'mattermost-redux/constants';
-import {createSelector} from 'mattermost-redux/selectors/create_selector';
+import {Preferences} from 'mattermost-redux/constants';
 import {
     getChannel,
     getChannelsNameMapInTeam,
@@ -42,13 +43,12 @@ import {
     getTeamMemberships,
     isTeamSameWithCurrentTeam,
 } from 'mattermost-redux/selectors/entities/teams';
-import {getCurrentUser, getCurrentUserId, isFirstAdmin} from 'mattermost-redux/selectors/entities/users';
+import {getCurrentUser, getCurrentUserId} from 'mattermost-redux/selectors/entities/users';
 import {blendColors, changeOpacity} from 'mattermost-redux/utils/theme_utils';
-import {displayUsername, isSystemAdmin} from 'mattermost-redux/utils/user_utils';
+import {displayUsername} from 'mattermost-redux/utils/user_utils';
 
 import {searchForTerm} from 'actions/post_actions';
 import {addUserToTeam} from 'actions/team_actions';
-import {getCurrentLocale, getTranslations} from 'selectors/i18n';
 import store from 'stores/redux_store';
 
 import {focusPost} from 'components/permalink_view/actions';
@@ -57,8 +57,10 @@ import type {TextboxElement} from 'components/textbox';
 import {getHistory} from 'utils/browser_history';
 import Constants, {FileTypes, ValidationErrors, A11yCustomEventTypes, AdvancedTextEditorTextboxIds} from 'utils/constants';
 import type {A11yFocusEventDetail} from 'utils/constants';
+import DesktopApp from 'utils/desktop_api';
+import {getIntl} from 'utils/i18n';
 import * as Keyboard from 'utils/keyboard';
-import * as UserAgent from 'utils/user_agent';
+import {FOCUS_REPLY_POST, isPopoutWindow, sendToParent} from 'utils/popouts/popout_windows';
 
 import {joinPrivateChannelPrompt} from './channel_utils';
 
@@ -69,6 +71,8 @@ const CLICKABLE_ELEMENTS = [
     'svg',
     'audio',
     'video',
+    'select',
+    'input',
 ];
 const MS_PER_SECOND = 1000;
 const MS_PER_MINUTE = 60 * MS_PER_SECOND;
@@ -82,7 +86,7 @@ export enum TimeInformation {
     HOURS = 'h',
     DAYS = 'd',
     FUTURE = 'f',
-    PAST = 'p'
+    PAST = 'p',
 }
 
 export type TimeUnit = Exclude<TimeInformation, TimeInformation.FUTURE | TimeInformation.PAST>;
@@ -107,7 +111,7 @@ export function isUnhandledLineBreakKeyCombo(e: React.KeyboardEvent | KeyboardEv
     return Boolean(
         Keyboard.isKeyPressed(e, Constants.KeyCodes.ENTER) &&
         !e.shiftKey && // shift + enter is already handled everywhere, so don't handle again
-        (e.altKey && !UserAgent.isSafari() && !Keyboard.cmdOrCtrlPressed(e)), // alt/option + enter is already handled in Safari, so don't handle again
+        (e.altKey && !isSafari() && !Keyboard.cmdOrCtrlPressed(e)), // alt/option + enter is already handled in Safari, so don't handle again
     );
 }
 
@@ -238,7 +242,7 @@ export const getFileType = (extin: string): typeof FileTypes[keyof typeof FileTy
                 return FileTypes.IMAGE;
             }
         }
-    } catch (e) {
+    } catch {
         // Not a valid URL, just check if the string itself has an extension
         if (extin.includes('.')) {
             const extension = extin.split('.').pop()?.toLowerCase();
@@ -327,7 +331,7 @@ export function getCompassIconClassName(fileTypeIn: string, outline = true, larg
 }
 
 export function getIconClassName(fileTypeIn: string) {
-    const fileType = fileTypeIn.toLowerCase()as keyof typeof Constants.ICON_FROM_TYPE;
+    const fileType = fileTypeIn.toLowerCase() as keyof typeof Constants.ICON_FROM_TYPE;
 
     if (fileType in Constants.ICON_NAME_FROM_TYPE) {
         return Constants.ICON_NAME_FROM_TYPE[fileType];
@@ -354,6 +358,8 @@ export function toRgbValues(hexStr: string): string {
 }
 
 export function applyTheme(theme: Theme) {
+    DesktopApp.updateTheme({...theme, isUsingSystemTheme: false});
+
     if (theme.centerChannelColor) {
         changeCss('.app__body .markdown__table tbody tr:nth-child(2n)', 'background:' + changeOpacity(theme.centerChannelColor, 0.07));
         changeCss('.app__body .channel-header__info .header-dropdown__icon', 'color:' + changeOpacity(theme.centerChannelColor, 0.75));
@@ -654,7 +660,7 @@ function updateCodeTheme(codeTheme: string) {
         xmlHTTP.onload = function onLoad() {
             link.href = cssPath;
 
-            if (UserAgent.isFirefox()) {
+            if (isFirefox()) {
                 link.addEventListener('load', () => {
                     changeCss('code.hljs', 'visibility: visible');
                 }, {once: true});
@@ -773,6 +779,27 @@ export function offsetTopLeft(el: HTMLElement) {
     return {top: rect.top + scrollTop, left: rect.left + scrollLeft};
 }
 
+function getSuggestionBoxHorizontalBoundary(textArea: HTMLElement) {
+    const {w: viewportWidth} = getViewportSize();
+    const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+    const textAreaRect = textArea.getBoundingClientRect();
+
+    let ancestor = textArea.parentElement;
+    while (ancestor) {
+        const ancestorRect = ancestor.getBoundingClientRect();
+        const ancestorStyle = getElementComputedStyle(ancestor);
+        const clipsHorizontalOverflow = ancestorStyle.overflow !== 'visible' || ancestorStyle.overflowX !== 'visible';
+
+        if (clipsHorizontalOverflow && ancestorRect.width >= textAreaRect.width) {
+            return ancestorRect.right + scrollLeft;
+        }
+
+        ancestor = ancestor.parentElement;
+    }
+
+    return viewportWidth + scrollLeft;
+}
+
 export function getSuggestionBoxAlgn(textArea: HTMLTextAreaElement, pxToSubstract = 0, alignWithTextBox = false) {
     if (!textArea || !(textArea instanceof HTMLElement)) {
         return {
@@ -782,8 +809,9 @@ export function getSuggestionBoxAlgn(textArea: HTMLTextAreaElement, pxToSubstrac
     }
 
     const {x: caretXCoordinateInTxtArea, y: caretYCoordinateInTxtArea} = getCaretXYCoordinate(textArea);
-    const {w: viewportWidth, h: viewportHeight} = getViewportSize();
+    const {h: viewportHeight} = getViewportSize();
     const {offsetWidth: textAreaWidth} = textArea;
+    const horizontalBoundary = getSuggestionBoxHorizontalBoundary(textArea);
 
     const suggestionBoxWidth = Math.min(textAreaWidth, Constants.SUGGESTION_LIST_MAXWIDTH);
 
@@ -799,8 +827,8 @@ export function getSuggestionBoxAlgn(textArea: HTMLTextAreaElement, pxToSubstrac
     if (alignWithTextBox) {
         // when the list should be aligned with the textbox just set this value to 0
         pxToTheRight = 0;
-    } else if (xBoxRightCoordinate > viewportWidth) {
-        // if the right-border edge of the suggestion box will overflow the x-axis viewport
+    } else if (xBoxRightCoordinate > horizontalBoundary) {
+        // if the right-border edge of the suggestion box will overflow the visible text area container
         // stick the suggestion list to the very right of the TextArea
         pxToTheRight = textAreaWidth - suggestionBoxWidth;
     }
@@ -1187,15 +1215,11 @@ export function fillRecord<T>(value: T, length: number): Record<number, T> {
 // Checks if a data transfer contains files not text, folders, etc..
 // Slightly modified from http://stackoverflow.com/questions/6848043/how-do-i-detect-a-file-is-being-dragged-rather-than-a-draggable-element-on-my-pa
 export function isFileTransfer(files: DataTransfer) {
-    if (UserAgent.isInternetExplorer() || UserAgent.isEdge()) {
-        return files.types != null && files.types.includes('Files');
-    }
-
     return files.types != null && (files.types.indexOf ? files.types.indexOf('Files') !== -1 : files.types.includes('application/x-moz-file'));
 }
 
 export function isUriDrop(dataTransfer: DataTransfer) {
-    if (UserAgent.isInternetExplorer() || UserAgent.isEdge() || UserAgent.isSafari()) {
+    if (isSafari()) {
         for (let i = 0; i < dataTransfer.items.length; i++) {
             if (dataTransfer.items[i].type === 'text/uri-list') {
                 return true;
@@ -1224,41 +1248,40 @@ export function clearFileInput(elm: HTMLInputElement) {
             elm.type = 'text';
             elm.type = 'file';
         }
-    } catch (e) {
+    } catch {
         // Do nothing
     }
 }
 
 /**
- * @deprecated Use react-intl instead, only place its usage can be justified is in the redux actions
+ * @deprecated Prefer using react-intl's `useIntl` hook or `FormattedMessage` component within React components.
+ * This function is mainly for use in Redux actions, utilities, and other non-React contexts.
+ *
+ * @param descriptor - Message descriptor with id, defaultMessage, and optional description
+ * @param values - Optional values for placeholder interpolation
+ * @returns The localized string with interpolated values
+ *
+ * @example
+ * // Simple message
+ * localizeMessage({
+ *   id: 'example.message',
+ *   defaultMessage: 'This is an example message',
+ *   description: 'An example message shown in the help section'
+ * })
+ *
+ * @example
+ * // Message with interpolation
+ * localizeMessage({
+ *   id: 'welcome.message',
+ *   defaultMessage: 'Welcome, {username}!',
+ *   description: 'Welcome message with username'
+ * }, {username: 'John'})
  */
-export function localizeMessage({id, defaultMessage}: {id: string; defaultMessage?: string}) {
-    const state = store.getState();
-
-    const locale = getCurrentLocale(state);
-    const translations = getTranslations(state, locale);
-
-    if (!translations || !(id in translations)) {
-        return defaultMessage || id;
-    }
-
-    return translations[id];
-}
-
-/**
- * @deprecated If possible, use intl.formatMessage instead. If you have to use this, remember to mark the id using `t`
- */
-export function localizeAndFormatMessage(descriptor: {id: string; defaultMessage?: string}, template: { [name: string]: any } | undefined) {
-    const base = localizeMessage(descriptor);
-
-    if (!template) {
-        return base;
-    }
-
-    return base.replace(/{[\w]+}/g, (match) => {
-        const key = match.substr(1, match.length - 2);
-        return template[key] || match;
-    });
+export function localizeMessage(descriptor: MessageDescriptor, values?: Record<string, any>): string;
+export function localizeMessage(descriptor: {id: string; defaultMessage?: string; description?: string}, values?: Record<string, any>): string;
+export function localizeMessage(descriptor: MessageDescriptor | {id: string; defaultMessage?: string; description?: string}, values?: Record<string, any>): string {
+    const intl = getIntl();
+    return intl.formatMessage(descriptor as MessageDescriptor, values);
 }
 
 export function mod(a: number, b: number): number {
@@ -1287,7 +1310,7 @@ function isChannelOrPermalink(link: string) {
     return match;
 }
 
-export async function handleFormattedTextClick(e: React.MouseEvent, currentRelativeTeamUrl = '') {
+export async function handleFormattedTextClick(e: React.UIEvent, currentRelativeTeamUrl = '') {
     const hashtagAttribute = (e.target as any).getAttributeNode('data-hashtag');
     const linkAttribute = (e.target as any).getAttributeNode('data-link');
     const channelMentionAttribute = (e.target as any).getAttributeNode('data-channel-mention');
@@ -1299,7 +1322,7 @@ export async function handleFormattedTextClick(e: React.MouseEvent, currentRelat
     } else if (linkAttribute) {
         const MIDDLE_MOUSE_BUTTON = 1;
 
-        if (!(e.button === MIDDLE_MOUSE_BUTTON || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey)) {
+        if (!isMouseEvent(e) || !(e.button === MIDDLE_MOUSE_BUTTON || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey)) {
             e.preventDefault();
 
             const state = store.getState();
@@ -1375,15 +1398,28 @@ export async function handleFormattedTextClick(e: React.MouseEvent, currentRelat
             e.stopPropagation();
 
             if (match && match.type === 'permalink' && isTeamSameWithCurrentTeam(state, match.teamName) && isReply && crtEnabled) {
-                store.dispatch(focusPost(match.postId ?? '', linkAttribute.value, user.id, {skipRedirectReplyPermalink: true}));
+                if (isPopoutWindow()) {
+                    sendToParent(FOCUS_REPLY_POST, match.postId ?? '', linkAttribute.value);
+                } else {
+                    store.dispatch(focusPost(match.postId ?? '', linkAttribute.value, user.id, {skipRedirectReplyPermalink: true}));
+                }
             } else {
                 getHistory().push(linkAttribute.value);
             }
         }
     } else if (channelMentionAttribute) {
         e.preventDefault();
-        getHistory().push(currentRelativeTeamUrl + '/channels/' + channelMentionAttribute.value);
+
+        // Check if the link specifies a team (for cross-team channel mentions)
+        const teamAttribute = (e.target as any).getAttributeNode('data-channel-mention-team');
+        const teamUrl = teamAttribute ? '/' + teamAttribute.value : currentRelativeTeamUrl;
+
+        getHistory().push(teamUrl + '/channels/' + channelMentionAttribute.value);
     }
+}
+
+function isMouseEvent(e: React.UIEvent): e is React.MouseEvent {
+    return 'button' in e;
 }
 
 export function isEmptyObject(object: any) {
@@ -1492,9 +1528,9 @@ export function isTextSelectedInPostOrReply(e: React.KeyboardEvent | KeyboardEve
     const {id} = e.target as HTMLElement;
 
     const isTypingInValidTextbox =
-    id === AdvancedTextEditorTextboxIds.InCenter ||
-    id === AdvancedTextEditorTextboxIds.InRHSComment ||
-    id === AdvancedTextEditorTextboxIds.InEditMode;
+        id === AdvancedTextEditorTextboxIds.InCenter ||
+        id === AdvancedTextEditorTextboxIds.InRHSComment ||
+        id === AdvancedTextEditorTextboxIds.InEditMode;
 
     if (isTypingInValidTextbox === false) {
         return false;
@@ -1586,85 +1622,18 @@ export function numberToFixedDynamic(num: number, places: number): string {
     return str.slice(0, indexToExclude);
 }
 
-const TrackFlowRoles: Record<string, string> = {
-    fa: Constants.FIRST_ADMIN_ROLE,
-    sa: General.SYSTEM_ADMIN_ROLE,
-    su: General.SYSTEM_USER_ROLE,
-};
-
-export function getTrackFlowRole(state: GlobalState) {
-    let trackFlowRole = 'su';
-
-    if (isFirstAdmin(state)) {
-        trackFlowRole = 'fa';
-    } else if (isSystemAdmin(getCurrentUser(state).roles)) {
-        trackFlowRole = 'sa';
-    }
-
-    return trackFlowRole;
-}
-
-export const getRoleForTrackFlow = createSelector(
-    'getRoleForTrackFlow',
-    getTrackFlowRole,
-    (trackFlowRole) => {
-        const startedByRole = TrackFlowRoles[trackFlowRole];
-
-        return {started_by_role: startedByRole};
-    },
-);
-
-export function getSbr() {
-    const params = new URLSearchParams(window.location.search);
-    const sbr = params.get('sbr') ?? '';
-    return sbr;
-}
-
-export function getRoleFromTrackFlow() {
-    const sbr = getSbr();
-    const startedByRole = TrackFlowRoles[sbr] ?? '';
-
-    return {started_by_role: startedByRole};
-}
-
 export function getDatePickerLocalesForDateFns(locale: string, loadedLocales: Record<string, Locale>) {
     if (locale && locale !== 'en' && !loadedLocales[locale]) {
         try {
-            /* eslint-disable global-require */
+            /* eslint-disable global-require, @typescript-eslint/no-require-imports */
             loadedLocales[locale] = require(`date-fns/locale/${locale}/index.js`);
-            /* eslint-disable global-require */
+            /* eslint-enable global-require, @typescript-eslint/no-require-imports */
         } catch (e) {
             console.log(e); // eslint-disable-line no-console
         }
     }
 
     return loadedLocales;
-}
-
-export function getMediumFromTrackFlow() {
-    const params = new URLSearchParams(window.location.search);
-    const source = params.get('md') ?? '';
-
-    return {source};
-}
-
-const TrackFlowSources: Record<string, string> = {
-    wd: 'webapp-desktop',
-    wm: 'webapp-mobile',
-    d: 'desktop-app',
-};
-
-function getTrackFlowSource() {
-    if (UserAgent.isMobile()) {
-        return TrackFlowSources.wm;
-    } else if (UserAgent.isDesktopApp()) {
-        return TrackFlowSources.d;
-    }
-    return TrackFlowSources.wd;
-}
-
-export function getSourceForTrackFlow() {
-    return {source: getTrackFlowSource()};
 }
 
 export function a11yFocus(element: HTMLElement | null | undefined, keyboardOnly = true) {

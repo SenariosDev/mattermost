@@ -8,11 +8,20 @@ import type {PropertyFieldOption} from '@mattermost/types/properties';
 import MultiValueSelector from './multi_value_selector_menu';
 import SingleValueSelector from './single_value_selector_menu';
 
+import {isMultiValueOperator} from '../shared';
+
 export interface TableRow {
     attribute: string;
     operator: string;
     values: string[];
     attribute_type: string;
+    hasMaskedValues: boolean;
+
+    // Native user attributes are referenced as `user.<name>` (vs `user.attributes.<name>`).
+    isNative?: boolean;
+
+    // Native boolean attributes (e.g. user.verified) emit unquoted true/false literals.
+    isBoolean?: boolean;
 }
 
 export interface ValueSelectorMenuProps {
@@ -24,7 +33,6 @@ export interface ValueSelectorMenuProps {
     placeholder?: string;
 }
 
-// Main ValueSelectorMenu component that delegates to the appropriate selector
 const ValueSelectorMenu = ({
     row,
     disabled,
@@ -33,7 +41,7 @@ const ValueSelectorMenu = ({
     allowCreateValue = false,
     placeholder,
 }: ValueSelectorMenuProps) => {
-    const isMultiOperator = row.operator === 'in';
+    const isMultiOperator = isMultiValueOperator(row.operator);
 
     if (isMultiOperator) {
         return (
@@ -44,11 +52,11 @@ const ValueSelectorMenu = ({
                 options={options}
                 allowCreateValue={allowCreateValue}
                 placeholder={placeholder}
+                hasMaskedValues={row.hasMaskedValues}
             />
         );
     }
 
-    // For single-value operators
     return (
         <SingleValueSelector
             value={row.values[0] || ''}
@@ -57,6 +65,7 @@ const ValueSelectorMenu = ({
             options={options}
             allowCreateValue={allowCreateValue}
             placeholder={placeholder}
+            hasMaskedValues={row.hasMaskedValues}
         />
     );
 };

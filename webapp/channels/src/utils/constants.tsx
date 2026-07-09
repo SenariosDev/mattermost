@@ -71,11 +71,7 @@ export const Preferences = {
     CATEGORY_ADVANCED_SETTINGS: 'advanced_settings',
     TUTORIAL_STEP: 'tutorial_step',
     TUTORIAL_STEP_AUTO_TOUR_STATUS: 'tutorial_step_auto_tour_status',
-    CRT_TUTORIAL_TRIGGERED: 'crt_tutorial_triggered',
-    CRT_TUTORIAL_AUTO_TOUR_STATUS: 'crt_tutorial_auto_tour_status',
-    CRT_TUTORIAL_STEP: 'crt_tutorial_step',
     EXPLORE_OTHER_TOOLS_TUTORIAL_STEP: 'explore_other_tools_step',
-    CRT_THREAD_PANE_STEP: 'crt_thread_pane_step',
     CHANNEL_DISPLAY_MODE: 'channel_display_mode',
     CHANNEL_DISPLAY_MODE_CENTERED: 'centered',
     CHANNEL_DISPLAY_MODE_FULL_SCREEN: 'full',
@@ -94,6 +90,8 @@ export const Preferences = {
     COLLAPSED_REPLY_THREADS_FALLBACK_DEFAULT: 'off',
     RENDER_EMOTICONS_AS_EMOJI: 'render_emoticons_as_emoji',
     RENDER_EMOTICONS_AS_EMOJI_DEFAULT: 'true',
+    WYSIWYG_EDITOR: 'wysiwyg_editor',
+    WYSIWYG_EDITOR_DEFAULT: 'false',
     LINK_PREVIEW_DISPLAY: 'link_previews',
     LINK_PREVIEW_DISPLAY_DEFAULT: 'true',
     COLLAPSE_DISPLAY: 'collapse_previews',
@@ -122,6 +120,8 @@ export const Preferences = {
     ADMIN_CLOUD_UPGRADE_PANEL: 'admin_cloud_upgrade_panel',
     CATEGORY_EMOJI: 'emoji',
     EMOJI_SKINTONE: 'emoji_skintone',
+    CATEGORY_AGENTS: 'agents',
+    SELECTED_AGENT: 'selected_agent',
     ONE_CLICK_REACTIONS_ENABLED: 'one_click_reactions_enabled',
     ONE_CLICK_REACTIONS_ENABLED_DEFAULT: 'true',
     CLOUD_TRIAL_END_BANNER: 'cloud_trial_end_banner',
@@ -150,9 +150,11 @@ export const Preferences = {
     CONFIGURATION_BANNERS: 'configuration_banners',
     NOTIFY_ADMIN_REVOKE_DOWNGRADED_WORKSPACE: 'admin_revoke_downgraded_instance',
     OVERAGE_USERS_BANNER: ReduxPreferences.CATEGORY_OVERAGE_USERS_BANNER,
+    POST_HISTORY_LIMIT_BANNER: ReduxPreferences.CATEGORY_POST_HISTORY_LIMIT_BANNER,
+    USERS_LIMITS_BANNER: 'users_limits_banner',
+    SINGLE_CHANNEL_GUEST_LIMIT_BANNER: 'sc_guest_limit_banner',
     TO_CLOUD_YEARLY_PLAN_NUDGE: 'to_cloud_yearly_plan_nudge',
     TO_PAID_PLAN_NUDGE: 'to_paid_plan_nudge',
-    CLOUD_ANNUAL_RENEWAL_BANNER: 'cloud_annual_renewal_banner',
 };
 
 // For one off things that have a special, attention-grabbing UI until you interact with them
@@ -177,6 +179,7 @@ export const TrialPeriodDays = {
 };
 
 export const suitePluginIds = {
+    agents: 'mattermost-ai',
     playbooks: 'playbooks',
     focalboard: 'focalboard',
 
@@ -242,6 +245,7 @@ export const ActionTypes = keyMirror({
     RECEIVED_ADMIN_CONSOLE_CUSTOM_SECTION: null,
     RECEIVED_PLUGIN_STATS_HANDLER: null,
     RECEIVED_PLUGIN_USER_SETTINGS: null,
+    RECEIVED_PLUGIN_CHANNEL_SETTINGS_TAB: null,
 
     MODAL_OPEN: null,
     MODAL_CLOSE: null,
@@ -252,8 +256,6 @@ export const ActionTypes = keyMirror({
 
     INCREMENT_EMOJI_PICKER_PAGE: null,
     SET_RECENT_SKIN: null,
-
-    ADD_CHANNEL_CTA_DROPDOWN_TOGGLE: null,
 
     SHOW_ONBOARDING_TASK_COMPLETION: null,
     SHOW_ONBOARDING_COMPLETE_PROFILE_TOUR: null,
@@ -359,6 +361,7 @@ export const ModalIdentifiers = {
     EDIT_CHANNEL_PURPOSE: 'edit_channel_purpose',
     NOTIFICATIONS: 'notifications',
     DELETE_POST: 'delete_post',
+    BURN_ON_READ_CONFIRMATION: 'burn_on_read_confirmation',
     CONVERT_CHANNEL: 'convert_channel',
     RESET_STATUS: 'reset_status',
     LEAVE_TEAM: 'leave_team',
@@ -366,6 +369,8 @@ export const ModalIdentifiers = {
     USER_SETTINGS: 'user_settings',
     QUICK_SWITCH: 'quick_switch',
     REMOVED_FROM_CHANNEL: 'removed_from_channel',
+    SHOW_TRANSLATION: 'show_translation',
+    DISABLE_AUTOTRANSLATION_CONFIRM: 'disable_autotranslation_confirm',
     EMAIL_INVITE: 'email_invite',
     INTERACTIVE_DIALOG: 'interactive_dialog',
     APPS_MODAL: 'apps_modal',
@@ -414,6 +419,7 @@ export const ModalIdentifiers = {
     POST_DELETED_MODAL: 'post_deleted_modal',
     FILE_PREVIEW_MODAL: 'file_preview_modal',
     LEAVE_PRIVATE_CHANNEL_MODAL: 'leave_private_channel_modal',
+    MARK_ALL_AS_READ: 'mark_all_as_read',
     GET_PUBLIC_LINK_MODAL: 'get_public_link_modal',
     KEYBOARD_SHORTCUTS_MODAL: 'keyboar_shortcuts_modal',
     USERS_TO_BE_REMOVED: 'users_to_be_removed',
@@ -428,7 +434,6 @@ export const ModalIdentifiers = {
     JOIN_PUBLIC_CHANNEL_MODAL: 'join_public_channel_modal',
     CLOUD_INVOICE_PREVIEW: 'cloud_invoice_preview',
     BILLING_HISTORY: 'billing_history',
-    SUM_OF_MEMBERS_MODAL: 'sum_of_members_modal',
     RESTORE_POST_MODAL: 'restore_post',
     INFO_TOAST: 'info_toast',
     MARK_ALL_THREADS_AS_READ: 'mark_all_threads_as_read_modal',
@@ -479,9 +484,13 @@ export const ModalIdentifiers = {
     SHARED_CHANNEL_REMOTE_UNINVITE: 'shared_channel_remote_uninvite',
     CONFIRM_RESET_FAILED_ATTEMPTS_MODAL: 'confirm_reset_failed_attempts_modal',
     USER_PROPERTY_FIELD_DELETE: 'user_property_field_delete',
+    BOARD_ATTRIBUTE_FIELD_DELETE: 'board_attribute_field_delete',
     ATTRIBUTE_MODAL_LDAP: 'attribute_modal_ldap',
     ATTRIBUTE_MODAL_SAML: 'attribute_modal_saml',
+    RANKED_SCHEMA_MODAL: 'ranked_schema_modal',
     FLAG_POST: 'flag_post',
+    REMOVE_FLAGGED_POST: 'remove_flagged_post',
+    CREATE_RECAP_MODAL: 'create_recap_modal',
 };
 
 export const UserStatuses = {
@@ -603,7 +612,7 @@ export const A11yCustomEventTypes = {
 export type A11yFocusEventDetail = {
     target: HTMLElement | null | undefined;
     keyboardOnly: boolean;
-}
+};
 
 export function isA11yFocusEventDetail(o: unknown): o is A11yFocusEventDetail {
     return Boolean(o && typeof o === 'object' && 'keyboardOnly' in o);
@@ -613,71 +622,10 @@ export const AppEvents = {
     FOCUS_EDIT_TEXTBOX: 'focus_edit_textbox',
 };
 
+/**
+ * @deprecated Use WebSocketEvents from @mattermost/client instead.
+ */
 export const SocketEvents = {
-    POSTED: 'posted',
-    POST_EDITED: 'post_edited',
-    POST_DELETED: 'post_deleted',
-    POST_UPDATED: 'post_updated',
-    POST_UNREAD: 'post_unread',
-    CHANNEL_CONVERTED: 'channel_converted',
-    CHANNEL_CREATED: 'channel_created',
-    CHANNEL_DELETED: 'channel_deleted',
-    CHANNEL_UNARCHIVED: 'channel_restored',
-    CHANNEL_UPDATED: 'channel_updated',
-    CHANNEL_BOOKMARK_CREATED: 'channel_bookmark_created',
-    CHANNEL_BOOKMARK_DELETED: 'channel_bookmark_deleted',
-    CHANNEL_BOOKMARK_UPDATED: 'channel_bookmark_updated',
-    CHANNEL_BOOKMARK_SORTED: 'channel_bookmark_sorted',
-    MULTIPLE_CHANNELS_VIEWED: 'multiple_channels_viewed',
-    CHANNEL_MEMBER_UPDATED: 'channel_member_updated',
-    CHANNEL_SCHEME_UPDATED: 'channel_scheme_updated',
-    DIRECT_ADDED: 'direct_added',
-    GROUP_ADDED: 'group_added',
-    NEW_USER: 'new_user',
-    ADDED_TO_TEAM: 'added_to_team',
-    JOIN_TEAM: 'join_team',
-    LEAVE_TEAM: 'leave_team',
-    UPDATE_TEAM: 'update_team',
-    DELETE_TEAM: 'delete_team',
-    UPDATE_TEAM_SCHEME: 'update_team_scheme',
-    USER_ADDED: 'user_added',
-    USER_REMOVED: 'user_removed',
-    USER_UPDATED: 'user_updated',
-    USER_ROLE_UPDATED: 'user_role_updated',
-    MEMBERROLE_UPDATED: 'memberrole_updated',
-    ROLE_ADDED: 'role_added',
-    ROLE_REMOVED: 'role_removed',
-    ROLE_UPDATED: 'role_updated',
-    TYPING: 'typing',
-    PREFERENCE_CHANGED: 'preference_changed',
-    PREFERENCES_CHANGED: 'preferences_changed',
-    PREFERENCES_DELETED: 'preferences_deleted',
-    EPHEMERAL_MESSAGE: 'ephemeral_message',
-    STATUS_CHANGED: 'status_change',
-    HELLO: 'hello',
-    REACTION_ADDED: 'reaction_added',
-    REACTION_REMOVED: 'reaction_removed',
-    EMOJI_ADDED: 'emoji_added',
-    PLUGIN_ENABLED: 'plugin_enabled',
-    PLUGIN_DISABLED: 'plugin_disabled',
-    LICENSE_CHANGED: 'license_changed',
-    CONFIG_CHANGED: 'config_changed',
-    PLUGIN_STATUSES_CHANGED: 'plugin_statuses_changed',
-    OPEN_DIALOG: 'open_dialog',
-    RECEIVED_GROUP: 'received_group',
-    GROUP_MEMBER_ADD: 'group_member_add',
-    GROUP_MEMBER_DELETED: 'group_member_deleted',
-    RECEIVED_GROUP_ASSOCIATED_TO_TEAM: 'received_group_associated_to_team',
-    RECEIVED_GROUP_NOT_ASSOCIATED_TO_TEAM: 'received_group_not_associated_to_team',
-    RECEIVED_GROUP_ASSOCIATED_TO_CHANNEL: 'received_group_associated_to_channel',
-    RECEIVED_GROUP_NOT_ASSOCIATED_TO_CHANNEL: 'received_group_not_associated_to_channel',
-    SIDEBAR_CATEGORY_CREATED: 'sidebar_category_created',
-    SIDEBAR_CATEGORY_UPDATED: 'sidebar_category_updated',
-    SIDEBAR_CATEGORY_DELETED: 'sidebar_category_deleted',
-    SIDEBAR_CATEGORY_ORDER_UPDATED: 'sidebar_category_order_updated',
-    USER_ACTIVATION_STATUS_CHANGED: 'user_activation_status_change',
-    CLOUD_PAYMENT_STATUS_UPDATED: 'cloud_payment_status_updated',
-    CLOUD_SUBSCRIPTION_CHANGED: 'cloud_subscription_changed',
     APPS_FRAMEWORK_REFRESH_BINDINGS: 'custom_com.mattermost.apps_refresh_bindings',
     APPS_FRAMEWORK_PLUGIN_ENABLED: 'custom_com.mattermost.apps_plugin_enabled',
     APPS_FRAMEWORK_PLUGIN_DISABLED: 'custom_com.mattermost.apps_plugin_disabled',
@@ -699,6 +647,8 @@ export const SocketEvents = {
     CPA_FIELD_UPDATED: 'custom_profile_attributes_field_updated',
     CPA_FIELD_DELETED: 'custom_profile_attributes_field_deleted',
     CPA_VALUES_UPDATED: 'custom_profile_attributes_values_updated',
+    CONTENT_FLAGGING_REPORT_VALUE_CHANGED: 'content_flagging_report_value_updated',
+    RECAP_UPDATED: 'recap_updated',
 };
 
 export const TutorialSteps = {
@@ -715,24 +665,6 @@ export const TutorialSteps = {
 
 // note: add steps in same order as the keys in TutorialSteps above
 export const AdminTutorialSteps = ['START_TRIAL'];
-
-export const CrtTutorialSteps = {
-    WELCOME_POPOVER: 0,
-    LIST_POPOVER: 1,
-    UNREAD_POPOVER: 2,
-    FINISHED: 999,
-};
-
-export const CrtTutorialTriggerSteps = {
-    START: 0,
-    STARTED: 1,
-    FINISHED: 999,
-};
-
-export const CrtThreadPaneSteps = {
-    THREADS_PANE_POPOVER: 0,
-    FINISHED: 999,
-};
 
 export const TopLevelProducts = {
     BOARDS: 'Boards',
@@ -773,8 +705,6 @@ export const CloudBanners = {
     THREE_DAYS_LEFT_TRIAL_MODAL_DISMISSED: 'dismiss_3_days_left_trial_modal',
     NUDGE_TO_CLOUD_YEARLY_PLAN_SNOOZED: 'nudge_to_cloud_yearly_plan_snoozed',
     NUDGE_TO_PAID_PLAN_SNOOZED: 'nudge_to_paid_plan_snoozed',
-    ANNUAL_RENEWAL_60_DAY: 'annual_renewal_60_day',
-    ANNUAL_RENEWAL_30_DAY: 'annual_renewal_30_day',
 };
 
 export const ConfigurationBanners = {
@@ -793,44 +723,6 @@ export const AdvancedTextEditorTextboxIds = {
     InModal: 'modal_textbox',
     InEditMode: 'edit_textbox',
     Default: 'textbox',
-};
-
-export const TELEMETRY_CATEGORIES = {
-    CLOUD_PURCHASING: 'cloud_purchasing',
-    CLOUD_PRICING: 'cloud_pricing',
-    SELF_HOSTED_PURCHASING: 'self_hosted_purchasing',
-    SELF_HOSTED_EXPANSION: 'self_hosted_expansion',
-    CLOUD_ADMIN: 'cloud_admin',
-    CLOUD_DELINQUENCY: 'cloud_delinquency',
-    SELF_HOSTED_ADMIN: 'self_hosted_admin',
-    POST_INFO_MORE: 'post_info_more_menu',
-    POST_INFO: 'post_info',
-    SELF_HOSTED_START_TRIAL_AUTO_MODAL: 'self_hosted_start_trial_auto_modal',
-    SELF_HOSTED_START_TRIAL_MODAL: 'self_hosted_start_trial_modal',
-    CLOUD_START_TRIAL_BUTTON: 'cloud_start_trial_button',
-    CLOUD_THREE_DAYS_LEFT_MODAL: 'cloud_three_days_left_modal',
-    SELF_HOSTED_START_TRIAL_TASK_LIST: 'self_hosted_start_trial_task_list',
-    SELF_HOSTED_LICENSE_EXPIRED: 'self_hosted_license_expired',
-    WORKSPACE_OPTIMIZATION_DASHBOARD: 'workspace_optimization_dashboard',
-    REQUEST_BUSINESS_EMAIL: 'request_business_email',
-    TRUE_UP_REVIEW: 'true_up_review',
-};
-
-export const TELEMETRY_LABELS = {
-    UNSAVE: 'unsave',
-    SAVE: 'save',
-    COPY_LINK: 'copy_link',
-    COPY_TEXT: 'copy_text',
-    DELETE: 'delete',
-    EDIT: 'edit',
-    FOLLOW: 'follow',
-    UNFOLLOW: 'unfollow',
-    PIN: 'pin',
-    UNPIN: 'unpin',
-    REPLY: 'reply',
-    UNREAD: 'unread',
-    FORWARD: 'forward',
-    MOVE_THREAD: 'move_thread',
 };
 
 export const PostTypes = {
@@ -861,6 +753,9 @@ export const PostTypes = {
     CUSTOM_CALLS: 'custom_calls',
     CUSTOM_CALLS_RECORDING: 'custom_calls_recording',
     CUSTOM_DATA_SPILLAGE_REPORT: 'custom_spillage_report',
+    AUTO_TRANSLATION_CHANGE: 'system_autotranslation',
+    BURN_ON_READ: 'burn_on_read',
+    SHARED_CHANNEL_STATE: 'system_shared_chan_state',
 };
 
 export const StatTypes = keyMirror({
@@ -885,6 +780,7 @@ export const StatTypes = keyMirror({
     MONTHLY_ACTIVE_USERS: null,
     TOTAL_FILE_COUNT: null,
     TOTAL_FILE_SIZE: null,
+    SINGLE_CHANNEL_GUESTS: null,
 });
 
 export const SearchTypes = keyMirror({
@@ -921,6 +817,8 @@ export const StoragePrefixes = {
     DELINQUENCY: 'delinquency_',
     HIDE_JOINED_CHANNELS: 'hideJoinedChannels',
     HIDE_NOTIFICATION_PERMISSION_REQUEST_BANNER: 'hideNotificationPermissionRequestBanner',
+    MARK_ALL_READ_WITHOUT_CONFIRM: 'mark_all_as_read_without_confirm',
+    HAS_SEEN_FEATURE_TOAST: 'has_seen_feature_toast',
 };
 
 export const LandingPreferenceTypes = {
@@ -940,6 +838,7 @@ export const ErrorPageTypes = {
     CHANNEL_NOT_FOUND: 'channel_not_found',
     POST_NOT_FOUND: 'post_not_found',
     CLOUD_ARCHIVED: 'cloud_archived',
+    MAGIC_LINK_ALREADY_LOGGED_IN: 'magic_link_already_logged_in',
 };
 
 export const JobTypes = {
@@ -969,6 +868,7 @@ export const AnnouncementBarTypes = {
     ADVISOR: 'advisor',
     ADVISOR_ACK: 'advisor-ack',
     GENERAL: 'general',
+    WARNING: 'warning',
 };
 
 export const AnnouncementBarMessages = {
@@ -1039,6 +939,10 @@ export const FileTypes = {
     LICENSE_EXTENSION: '.mattermost-license',
 };
 
+export const HttpHeaders = {
+    REJECT_REASON: 'X-Reject-Reason',
+};
+
 export const NotificationLevels = {
     DEFAULT: 'default',
     ALL: 'all',
@@ -1067,6 +971,7 @@ export const UserSettingsNotificationSections = {
     DESKTOP_AND_MOBILE: 'desktopAndMobile',
     DESKTOP_NOTIFICATION_SOUND: 'desktopNotificationSound',
     EMAIL: 'email',
+    CHANNEL_MENTION_AUTO_FOLLOW: 'channelMentionAutoFollow',
     KEYWORDS_MENTIONS: 'keywordsAndMentions',
     KEYWORDS_HIGHLIGHT: 'keywordsAndHighlight',
     REPLY_NOTIFCATIONS: 'replyNotifications',
@@ -1129,7 +1034,7 @@ export const AboutLinks = {
 };
 
 export const CloudLinks = {
-    BILLING_DOCS: 'https://docs.mattermost.com/pl/cloud-billing',
+    BILLING_DOCS: 'https://docs.mattermost.com/product-overview/cloud-subscriptions.html',
     PRICING: 'https://mattermost.com/pl/pricing/',
     PRORATED_PAYMENT: 'https://mattermost.com/pl/mattermost-cloud-prorate-documentation',
     DEPLOYMENT_OPTIONS: 'https://mattermost.com/deploy/',
@@ -1177,7 +1082,7 @@ export const DocLinks = {
     SETUP_LDAP: 'https://mattermost.com/pl/setup-ldap',
     SETUP_PERFORMANCE_MONITORING: 'https://mattermost.com/pl/setup-performance-monitoring',
     SETUP_PUSH_NOTIFICATIONS: 'https://mattermost.com/pl/setup-push-notifications',
-    SETUP_SAML: 'https://docs.mattermost.com/pl/setup-saml',
+    SETUP_SAML: 'https://docs.mattermost.com/administration-guide/onboard/sso-saml.html',
     SHARE_LINKS_TO_MESSAGES: 'https://mattermost.com/pl/share-links-to-messages',
     SITE_URL: 'https://mattermost.com/pl/configure-site-url',
     SSL_CERTIFICATE: 'https://mattermost.com/pl/setup-ssl-client-certificate',
@@ -1204,6 +1109,7 @@ export const DeveloperLinks = {
 
 export const LicenseLinks = {
     CONTACT_SALES: 'https://mattermost.com/contact-sales/',
+    ENTRY_LIMITS_INFO: 'https://mattermost.com/pl/mattermost-entry-limits',
     TRIAL_INFO_LINK: 'https://mattermost.com/trial',
     EMBARGOED_COUNTRIES: 'https://mattermost.com/pl/limitations-for-embargoed-countries',
     SOFTWARE_SERVICES_LICENSE_AGREEMENT: 'https://mattermost.com/pl/software-and-services-license-agreement',
@@ -1230,6 +1136,7 @@ export const PermissionsScope = {
     [Permissions.INVITE_GUEST]: 'team_scope',
     [Permissions.ADD_USER_TO_TEAM]: 'team_scope',
     [Permissions.MANAGE_SLASH_COMMANDS]: 'team_scope',
+    [Permissions.MANAGE_OWN_SLASH_COMMANDS]: 'team_scope',
     [Permissions.MANAGE_OTHERS_SLASH_COMMANDS]: 'team_scope',
     [Permissions.CREATE_PUBLIC_CHANNEL]: 'team_scope',
     [Permissions.CREATE_PRIVATE_CHANNEL]: 'team_scope',
@@ -1244,6 +1151,8 @@ export const PermissionsScope = {
     [Permissions.CREATE_GROUP_CHANNEL]: 'system_scope',
     [Permissions.MANAGE_PUBLIC_CHANNEL_PROPERTIES]: 'channel_scope',
     [Permissions.MANAGE_PRIVATE_CHANNEL_PROPERTIES]: 'channel_scope',
+    [Permissions.MANAGE_PUBLIC_CHANNEL_AUTO_TRANSLATION]: 'channel_scope',
+    [Permissions.MANAGE_PRIVATE_CHANNEL_AUTO_TRANSLATION]: 'channel_scope',
     [Permissions.LIST_PUBLIC_TEAMS]: 'system_scope',
     [Permissions.JOIN_PUBLIC_TEAMS]: 'system_scope',
     [Permissions.LIST_PRIVATE_TEAMS]: 'system_scope',
@@ -1261,13 +1170,16 @@ export const PermissionsScope = {
     [Permissions.REMOVE_OTHERS_REACTIONS]: 'channel_scope',
     [Permissions.PERMANENT_DELETE_USER]: 'system_scope',
     [Permissions.UPLOAD_FILE]: 'channel_scope',
+    [Permissions.EDIT_FILE_ATTACHMENT]: 'channel_scope',
     [Permissions.GET_PUBLIC_LINK]: 'system_scope',
     [Permissions.MANAGE_INCOMING_WEBHOOKS]: 'team_scope',
+    [Permissions.MANAGE_OWN_INCOMING_WEBHOOKS]: 'team_scope',
+    [Permissions.BYPASS_INCOMING_WEBHOOK_CHANNEL_LOCK]: 'team_scope',
     [Permissions.MANAGE_OTHERS_INCOMING_WEBHOOKS]: 'team_scope',
     [Permissions.MANAGE_OUTGOING_WEBHOOKS]: 'team_scope',
+    [Permissions.MANAGE_OWN_OUTGOING_WEBHOOKS]: 'team_scope',
     [Permissions.MANAGE_OTHERS_OUTGOING_WEBHOOKS]: 'team_scope',
     [Permissions.MANAGE_OAUTH]: 'system_scope',
-    [Permissions.MANAGE_SYSTEM_WIDE_OAUTH]: 'system_scope',
     [Permissions.CREATE_POST]: 'channel_scope',
     [Permissions.CREATE_POST_PUBLIC]: 'channel_scope',
     [Permissions.EDIT_POST]: 'channel_scope',
@@ -1314,6 +1226,8 @@ export const PermissionsScope = {
     [Permissions.DELETE_CUSTOM_GROUP]: 'system_scope',
     [Permissions.RESTORE_CUSTOM_GROUP]: 'system_scope',
     [Permissions.MANAGE_CUSTOM_GROUP_MEMBERS]: 'system_scope',
+    [Permissions.MANAGE_OWN_AGENT]: 'system_scope',
+    [Permissions.MANAGE_OTHERS_AGENT]: 'system_scope',
     [Permissions.USE_SLASH_COMMANDS]: 'channel_scope',
     [Permissions.ADD_BOOKMARK_PUBLIC_CHANNEL]: 'channel_scope',
     [Permissions.EDIT_BOOKMARK_PUBLIC_CHANNEL]: 'channel_scope',
@@ -1326,6 +1240,7 @@ export const PermissionsScope = {
     [Permissions.MANAGE_PUBLIC_CHANNEL_BANNER]: 'channel_scope',
     [Permissions.MANAGE_PRIVATE_CHANNEL_BANNER]: 'channel_scope',
     [Permissions.MANAGE_CHANNEL_ACCESS_RULES]: 'channel_scope',
+    [Permissions.MANAGE_TEAM_ACCESS_RULES]: 'team_scope',
 };
 
 export const DefaultRolePermissions = {
@@ -1358,6 +1273,7 @@ export const DefaultRolePermissions = {
         Permissions.MANAGE_PRIVATE_CHANNEL_MEMBERS,
         Permissions.DELETE_POST,
         Permissions.EDIT_POST,
+        Permissions.EDIT_FILE_ATTACHMENT,
         Permissions.USE_CHANNEL_MENTIONS,
         Permissions.USE_GROUP_MENTIONS,
         Permissions.CREATE_CUSTOM_GROUP,
@@ -1377,6 +1293,7 @@ export const DefaultRolePermissions = {
         Permissions.CREATE_EMOJIS,
         Permissions.RUN_VIEW,
         Permissions.RESTORE_CUSTOM_GROUP,
+        Permissions.MANAGE_OWN_AGENT,
         Permissions.ADD_BOOKMARK_PUBLIC_CHANNEL,
         Permissions.EDIT_BOOKMARK_PUBLIC_CHANNEL,
         Permissions.DELETE_BOOKMARK_PUBLIC_CHANNEL,
@@ -1407,6 +1324,8 @@ export const DefaultRolePermissions = {
         Permissions.ORDER_BOOKMARK_PRIVATE_CHANNEL,
         Permissions.MANAGE_PUBLIC_CHANNEL_BANNER,
         Permissions.MANAGE_PRIVATE_CHANNEL_BANNER,
+        Permissions.MANAGE_PUBLIC_CHANNEL_AUTO_TRANSLATION,
+        Permissions.MANAGE_PRIVATE_CHANNEL_AUTO_TRANSLATION,
         Permissions.MANAGE_CHANNEL_ACCESS_RULES,
     ],
     team_admin: [
@@ -1416,15 +1335,16 @@ export const DefaultRolePermissions = {
         Permissions.IMPORT_TEAM,
         Permissions.MANAGE_TEAM_ROLES,
         Permissions.MANAGE_CHANNEL_ROLES,
-        Permissions.MANAGE_SLASH_COMMANDS,
+        Permissions.MANAGE_OWN_SLASH_COMMANDS,
         Permissions.MANAGE_OTHERS_SLASH_COMMANDS,
-        Permissions.MANAGE_INCOMING_WEBHOOKS,
-        Permissions.MANAGE_OUTGOING_WEBHOOKS,
+        Permissions.MANAGE_OWN_INCOMING_WEBHOOKS,
+        Permissions.MANAGE_OTHERS_INCOMING_WEBHOOKS,
+        Permissions.BYPASS_INCOMING_WEBHOOK_CHANNEL_LOCK,
+        Permissions.MANAGE_OWN_OUTGOING_WEBHOOKS,
+        Permissions.MANAGE_OTHERS_OUTGOING_WEBHOOKS,
         Permissions.DELETE_POST,
         Permissions.DELETE_OTHERS_POSTS,
-        Permissions.MANAGE_OTHERS_OUTGOING_WEBHOOKS,
         Permissions.ADD_REACTION,
-        Permissions.MANAGE_OTHERS_INCOMING_WEBHOOKS,
         Permissions.USE_CHANNEL_MENTIONS,
         Permissions.MANAGE_PUBLIC_CHANNEL_MEMBERS,
         Permissions.CONVERT_PUBLIC_CHANNEL_TO_PRIVATE,
@@ -1446,9 +1366,11 @@ export const DefaultRolePermissions = {
         Permissions.MANAGE_PUBLIC_CHANNEL_BANNER,
         Permissions.MANAGE_PRIVATE_CHANNEL_BANNER,
         Permissions.MANAGE_CHANNEL_ACCESS_RULES,
+        Permissions.MANAGE_TEAM_ACCESS_RULES,
     ],
     guests: [
         Permissions.EDIT_POST,
+        Permissions.EDIT_FILE_ATTACHMENT,
         Permissions.ADD_REACTION,
         Permissions.REMOVE_REACTION,
         Permissions.USE_CHANNEL_MENTIONS,
@@ -1510,26 +1432,16 @@ export const CacheTypes = {
 
 export const ZoomSettings = {
     DEFAULT_SCALE: 1.75,
+    DEFAULT_SCALE_IMAGE: 1.0,
     SCALE_DELTA: 0.25,
     MIN_SCALE: 0.25,
     MAX_SCALE: 3.0,
+    MAX_SCALE_IMAGE: 2.0,
 };
 
 export const DataSpillagePropertyNames = {
-    Status: 'Status',
-    FlaggedBy: 'Flagged by',
-    Reason: 'Reason',
-    Comment: 'Comment',
-    ReportingTime: 'Reporting Time',
-    ReviewingUser: 'Reviewing User',
-    ActionBy: 'Action By',
-    ActionComment: 'Action Comment',
-    ActionTime: 'Action Time',
-    Message: 'Message',
-    PostedIn: 'Posted in',
-    Team: 'Team',
-    PostedBy: 'Posted by',
-    PostedAt: 'Posted at',
+    FlaggedBy: 'reporting_user_id',
+    Status: 'status',
 };
 
 export const Constants = {
@@ -1541,9 +1453,6 @@ export const Constants = {
     UserStatuses,
     TutorialSteps,
     AdminTutorialSteps,
-    CrtTutorialSteps,
-    CrtTutorialTriggerSteps,
-    CrtThreadPaneSteps,
     PostTypes,
     ErrorPageTypes,
     AnnouncementBarTypes,
@@ -1584,9 +1493,7 @@ export const Constants = {
     MAX_ADD_MEMBERS_BATCH: 256,
 
     SPECIAL_MENTIONS: ['all', 'channel', 'here'],
-    PLAN_MENTIONS: /Professional plan|Enterprise plan|Enterprise trial/gi,
     SPECIAL_MENTIONS_REGEX: /(?:\B|\b_+)@(channel|all|here)(?!(\.|-|_)*[^\W_])/gi,
-    SUM_OF_MEMBERS_MENTION_REGEX: /\d+ members/gi,
     ALL_MENTION_REGEX: /(?:\B|\b_+)@(all)(?!(\.|-|_)*[^\W_])/gi,
     CHANNEL_MENTION_REGEX: /(?:\B|\b_+)@(channel)(?!(\.|-|_)*[^\W_])/gi,
     HERE_MENTION_REGEX: /(?:\B|\b_+)@(here)(?!(\.|-|_)*[^\W_])/gi,
@@ -1596,7 +1503,7 @@ export const Constants = {
     DEFAULT_CHARACTER_LIMIT: 4000,
     IMAGE_TYPE_GIF: 'gif',
     TEXT_TYPES: ['txt', 'rtf', 'vtt'],
-    IMAGE_TYPES: ['jpg', 'gif', 'bmp', 'png', 'jpeg', 'tiff', 'tif', 'psd', 'webp'],
+    IMAGE_TYPES: ['jpg', 'gif', 'bmp', 'png', 'jpeg', 'tiff', 'tif', 'webp'],
     AUDIO_TYPES: ['mp3', 'wav', 'wma', 'm4a', 'flac', 'aac', 'ogg', 'm4r'],
     VIDEO_TYPES: ['mp4', 'avi', 'webm', 'mkv', 'wmv', 'mpg', 'mov', 'flv'],
     PRESENTATION_TYPES: ['ppt', 'pptx'],
@@ -1667,6 +1574,7 @@ export const Constants = {
     EMAIL_SERVICE: 'email',
     LDAP_SERVICE: 'ldap',
     SAML_SERVICE: 'saml',
+    MAGIC_LINK_SERVICE: 'magic_link',
     USERNAME_SERVICE: 'username',
     SIGNIN_CHANGE: 'signin_change',
     PASSWORD_CHANGE: 'password_change',
@@ -2109,8 +2017,12 @@ export const Constants = {
     EMOJI_PATH: '/static/emoji',
     RECENT_EMOJI_KEY: 'recentEmojis',
     DEFAULT_WEBHOOK_LOGO: logoWebhook,
-    MHPNS_US: 'https://push.mattermost.com',
-    MHPNS_DE: 'https://hpns-de.mattermost.com',
+    MHPNS_LEGACY_US: 'https://push.mattermost.com',
+    MHPNS_LEGACY_DE: 'https://hpns-de.mattermost.com',
+    MHPNS_GLOBAL: 'https://global.push.mattermost.com',
+    MHPNS_US: 'https://us.push.mattermost.com',
+    MHPNS_DE: 'https://eu.push.mattermost.com',
+    MHPNS_JP: 'https://ap.push.mattermost.com',
     MTPNS: 'https://push-test.mattermost.com',
     MAX_PREV_MSGS: 100,
     POST_COLLAPSE_TIMEOUT: 1000 * 60 * 5, // five minutes
@@ -2126,6 +2038,7 @@ export const Constants = {
     PERMISSIONS_DELETE_POST_TEAM_ADMIN: 'team_admin',
     PERMISSIONS_DELETE_POST_SYSTEM_ADMIN: 'system_admin',
     PERMISSIONS_SYSTEM_CUSTOM_GROUP_ADMIN: 'system_custom_group_admin',
+    PERMISSIONS_SHARED_CHANNEL_MANAGER: 'system_shared_channel_manager',
     ALLOW_EDIT_POST_ALWAYS: 'always',
     ALLOW_EDIT_POST_NEVER: 'never',
     ALLOW_EDIT_POST_TIME_LIMIT: 'time_limit',
@@ -2213,7 +2126,7 @@ export const searchFilesHintOptions = [{searchTerm: 'From:', message: defineMess
     {searchTerm: 'On:', message: defineMessage({id: 'search_files_list_option.on', defaultMessage: 'Files on a date'})},
     {searchTerm: 'Before:', message: defineMessage({id: 'search_files_list_option.before', defaultMessage: 'Files before a date'})},
     {searchTerm: 'After:', message: defineMessage({id: 'search_files_list_option.after', defaultMessage: 'Files after a date'})},
-    {searchTerm: 'Ext:', message: defineMessage({id: 'search_files_list_option.ext', defaultMessage: 'Files with a extension'})},
+    {searchTerm: 'Ext:', message: defineMessage({id: 'search_files_list_option.ext', defaultMessage: 'Files with an extension'})},
     {searchTerm: '-', message: defineMessage({id: 'search_files_list_option.exclude', defaultMessage: 'Exclude search terms'}), additionalDisplay: '—'},
     {searchTerm: '""', message: defineMessage({id: 'search_files_list_option.phrases', defaultMessage: 'Files with phrases'})},
 ];
@@ -2318,12 +2231,6 @@ export const OverlayTransitionStyles = {
     START: {
         opacity: 0,
     },
-};
-
-export const OverlayArrow = {
-    WIDTH: 10, // in px
-    HEIGHT: 6, // in px
-    OFFSET: 8, // in px
 };
 
 export default Constants;

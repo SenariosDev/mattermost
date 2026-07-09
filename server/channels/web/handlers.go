@@ -191,6 +191,10 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		t,
 	)
 
+	if connectionId := r.Header.Get(model.ConnectionId); connectionId != "" {
+		c.AppContext = c.AppContext.WithConnectionId(connectionId)
+	}
+
 	c.Params = ParamsFromRequest(r)
 	c.Logger = c.App.Log()
 
@@ -238,7 +242,7 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		// Set content security policy. This is also specified in the root.html of the webapp in a meta tag.
 		w.Header().Set("Content-Security-Policy", fmt.Sprintf(
-			"frame-ancestors 'self' %s; script-src 'self' cdn.rudderlabs.com%s%s",
+			"frame-ancestors 'self' %s; script-src 'self'%s%s",
 			*c.App.Config().ServiceSettings.FrameAncestors,
 			h.cspShaDirective,
 			devCSP,
@@ -273,7 +277,7 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		// Rate limit by UserID
 		if c.App.Srv().RateLimiter != nil {
-			rateLimitExceeded = c.App.Srv().RateLimiter.UserIdRateLimit(c.AppContext.Session().UserId, w)
+			rateLimitExceeded = c.App.Srv().RateLimiter.UserIdRateLimit(r.Context(), c.AppContext.Session().UserId, w)
 			if rateLimitExceeded {
 				return
 			}
@@ -319,6 +323,7 @@ func (h Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		mlog.String("method", r.Method),
 	)
 	c.AppContext = c.AppContext.WithLogger(c.Logger)
+	c.App.ProcessSessionAttributesRequest(c.AppContext, r)
 
 	if c.Err == nil && h.RequireSession {
 		c.SessionRequired()
@@ -391,6 +396,19 @@ func (h Handler) handleContextError(c *Context, w http.ResponseWriter, r *http.R
 		// replace the context error with this error if so,
 		newErr := model.NewAppError(c.Err.Where, "api.context.request_body_too_large.app_error", nil, "Use the setting `MaximumPayloadSizeBytes` in Mattermost config to configure allowed payload limit. Learn more about this setting in Mattermost docs at https://docs.mattermost.com/configure/environment-configuration-settings.html#maximum-payload-size", http.StatusRequestEntityTooLarge)
 		c.Err = newErr
+	}
+
+	// Detect and fix AppError with missing StatusCode to prevent panics
+	if c.Err.StatusCode == 0 {
+		c.Logger.Error("AppError with zero StatusCode detected",
+			mlog.String("error_id", c.Err.Id),
+			mlog.String("error_message", c.Err.Message),
+			mlog.String("error_where", c.Err.Where),
+			mlog.String("request_path", r.URL.Path),
+			mlog.String("request_method", r.Method),
+			mlog.String("detailed_error", c.Err.DetailedError),
+		)
+		c.Err.StatusCode = http.StatusInternalServerError
 	}
 
 	c.Err.RequestId = c.AppContext.RequestId()
@@ -494,7 +512,7 @@ func (h *Handler) checkCSRFToken(c *Context, r *http.Request, tokenLocation app.
 				mlog.String("user_id", session.UserId),
 			}
 
-			if *c.App.Config().ServiceSettings.StrictCSRFEnforcement {
+			if *c.App.Config().ServiceSettings.ExperimentalStrictCSRFEnforcement {
 				c.Logger.Warn(csrfErrorMessage, fields...)
 			} else {
 				c.Logger.Debug(csrfErrorMessage, fields...)

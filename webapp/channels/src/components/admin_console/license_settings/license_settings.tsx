@@ -13,8 +13,6 @@ import type {GetFilteredUsersStatsOpts, UsersStats} from '@mattermost/types/user
 
 import type {ActionResult} from 'mattermost-redux/types/actions';
 
-import {trackEvent} from 'actions/telemetry_actions';
-
 import ExternalLink from 'components/external_link';
 import AdminHeader from 'components/widgets/admin_console/admin_header';
 
@@ -57,7 +55,6 @@ type Props = {
         isAllowedToUpgradeToEnterprise: () => Promise<ActionResult>;
         restartServer: () => Promise<StatusOK>;
         ping: () => Promise<{status: string}>;
-        requestTrialLicense: (users: number, termsAccepted: boolean, receiveEmailsAccepted: boolean, featureName: string) => Promise<ActionResult>;
         openModal: <P>(modalData: ModalData<P>) => void;
         getServerLimits: () => Promise<ActionResult<ServerLimits, ServerError>>;
         getFilteredUsersStats: (filters: GetFilteredUsersStatsOpts) => Promise<{
@@ -65,7 +62,7 @@ type Props = {
             error?: ServerError;
         }>;
     };
-}
+};
 
 const messages = defineMessages({
     title: {id: 'admin.license.title', defaultMessage: 'Edition and License'},
@@ -130,6 +127,7 @@ export default class LicenseSettings extends React.PureComponent<Props, State> {
         }
         this.props.actions.getLicenseConfig();
         this.props.actions.getFilteredUsersStats({include_bots: false, include_deleted: false});
+        this.props.actions.getServerLimits();
     }
 
     componentDidUpdate(prevProps: Props, prevState: State) {
@@ -157,11 +155,6 @@ export default class LicenseSettings extends React.PureComponent<Props, State> {
             if (this.interval) {
                 clearInterval(this.interval);
                 this.interval = null;
-                if (error) {
-                    trackEvent('api', 'upgrade_to_e0_failed', {error});
-                } else {
-                    trackEvent('api', 'upgrade_to_e0_success');
-                }
             }
         } else if (percentage > 0 && !this.interval) {
             this.interval = setInterval(this.reloadPercentage, 2000);
@@ -173,6 +166,9 @@ export default class LicenseSettings extends React.PureComponent<Props, State> {
         const element = this.fileInputRef.current;
         if (element?.files?.length) {
             this.setState({fileSelected: true, file: element.files[0]});
+
+            // Reset the input value so re-selecting the same file re-fires onChange.
+            element.value = '';
         }
     };
 
@@ -224,7 +220,6 @@ export default class LicenseSettings extends React.PureComponent<Props, State> {
             this.setState({upgradingPercentage: 1});
             await this.reloadPercentage();
         } catch (error: any) {
-            trackEvent('api', 'upgrade_to_e0_failed', {error: error.message as string});
             this.setState({upgradeError: error.message, upgradingPercentage: 0});
         }
     };
@@ -300,7 +295,6 @@ export default class LicenseSettings extends React.PureComponent<Props, State> {
             leftPanel = (
                 <TeamEditionLeftPanel
                     openEELicenseModal={this.openEELicenseModal}
-                    currentPlan={this.currentPlan}
                 />
             );
 

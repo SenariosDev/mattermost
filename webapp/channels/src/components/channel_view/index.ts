@@ -7,6 +7,7 @@ import {withRouter} from 'react-router-dom';
 
 import type {Channel} from '@mattermost/types/channels';
 
+import {fetchIsRestrictedDM} from 'mattermost-redux/actions/channels';
 import {
     getCurrentChannel,
     getMyChannelMembership,
@@ -36,7 +37,6 @@ function mapStateToProps(state: GlobalState) {
     const config = getConfig(state);
 
     const enableOnboardingFlow = config.EnableOnboardingFlow === 'true';
-    const enableWebSocketEventScope = config.FeatureFlagWebSocketEventScope === 'true';
 
     const missingChannelRole = isMissingChannelRoles(state, channel);
 
@@ -48,7 +48,8 @@ function mapStateToProps(state: GlobalState) {
         isCloud: getLicense(state).Cloud === 'true',
         teamUrl: getCurrentRelativeTeamUrl(state),
         isFirstAdmin: isFirstAdmin(state),
-        enableWebSocketEventScope,
+        canRestrictDirectMessage: config.RestrictDirectMessage === 'team' && (channel?.type === 'D' || channel?.type === 'G'),
+        restrictDirectMessage: channel ? state.entities.channels.restrictedDMs[channel.id] : false,
         isChannelBookmarksEnabled: getIsChannelBookmarksEnabled(state),
         missingChannelRole,
     };
@@ -56,6 +57,7 @@ function mapStateToProps(state: GlobalState) {
 
 const mapDispatchToProps = ({
     goToLastViewedChannel,
+    fetchIsRestrictedDM,
 });
 
 const connector = connect(mapStateToProps, mapDispatchToProps);

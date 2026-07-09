@@ -3,7 +3,6 @@
 
 import type {ConnectedProps} from 'react-redux';
 import {connect} from 'react-redux';
-import {withRouter} from 'react-router-dom';
 import {bindActionCreators} from 'redux';
 import type {Dispatch} from 'redux';
 
@@ -18,10 +17,11 @@ import {
     getMyCurrentChannelMembership,
     isCurrentChannelMuted,
     getCurrentChannelStats,
+    isMyChannelAutotranslated,
 } from 'mattermost-redux/selectors/entities/channels';
-import {getConfig, getFeatureFlagValue} from 'mattermost-redux/selectors/entities/general';
+import {getConfig} from 'mattermost-redux/selectors/entities/general';
 import {getRemoteNamesForChannel} from 'mattermost-redux/selectors/entities/shared_channels';
-import {getCurrentTeamId} from 'mattermost-redux/selectors/entities/teams';
+import {getCurrentTeam} from 'mattermost-redux/selectors/entities/teams';
 import {
     displayLastActiveLabel,
     getCurrentUser,
@@ -56,8 +56,6 @@ function makeMapStateToProps() {
         const channel = getCurrentChannel(state);
         const user = getCurrentUser(state);
         const config = getConfig(state);
-        const sharedChannelsPluginsEnabled = getFeatureFlagValue(state, 'EnableSharedChannelsPlugins') === 'true';
-
         let dmUser;
         let gmMembers;
         let customStatus;
@@ -86,7 +84,7 @@ function makeMapStateToProps() {
         }
 
         return {
-            teamId: getCurrentTeamId(state),
+            team: getCurrentTeam(state),
             channel,
             channelMember: getMyCurrentChannelMembership(state),
             memberCount: stats?.member_count || 0,
@@ -106,7 +104,7 @@ function makeMapStateToProps() {
             isLastActiveEnabled,
             timestampUnits,
             hideGuestTags: config.HideGuestTags === 'true',
-            sharedChannelsPluginsEnabled,
+            isChannelAutotranslated: channel ? isMyChannelAutotranslated(state, channel.id) : false,
         };
     };
 }
@@ -127,4 +125,4 @@ const connector = connect(makeMapStateToProps, mapDispatchToProps);
 
 export type PropsFromRedux = ConnectedProps<typeof connector>;
 
-export default withRouter(connector(ChannelHeader));
+export default connector(ChannelHeader);

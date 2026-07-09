@@ -1,14 +1,13 @@
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
 // See LICENSE.txt for license information.
 
-import userEvent from '@testing-library/user-event';
 import React from 'react';
 
-import {renderWithContext, screen, waitFor, act} from 'tests/react_testing_utils';
+import {renderWithContext, screen, waitFor, act, userEvent} from 'tests/react_testing_utils';
 
 import PostTime from './post_time';
 
-jest.mock('utils/user_agent', () => ({
+jest.mock('@mattermost/shared/utils/user_agent', () => ({
     isMobile: jest.fn().mockReturnValue(false),
     isDesktopApp: jest.fn().mockReturnValue(false),
 }));
@@ -69,16 +68,16 @@ describe('components/post_view/post_time/PostTime', () => {
 
         renderWithContext(<PostTime {...baseProps}/>, initialState);
 
+        const timeElement = screen.getByText('12:00 AM');
+        await userEvent.hover(timeElement.closest('a') || timeElement, {advanceTimers: jest.advanceTimersByTime});
+
         await act(async () => {
-            const timeElement = screen.getByText('12:00 AM');
-            userEvent.hover(timeElement.closest('a') || timeElement);
-
             jest.advanceTimersByTime(1000);
+        });
 
-            await waitFor(() => {
-                // Check for the tooltip content with date and time
-                expect(screen.getByText(/Wednesday, January 1, 2020 at 12:00:00 AM/)).toBeInTheDocument();
-            });
+        await waitFor(() => {
+            // Check for the tooltip content with date and time
+            expect(screen.getByText(/Wednesday, January 1, 2020 at 12:00:00 AM/)).toBeInTheDocument();
         });
 
         jest.useRealTimers();
@@ -94,16 +93,16 @@ describe('components/post_view/post_time/PostTime', () => {
 
         renderWithContext(<PostTime {...props}/>, initialState);
 
+        const timeElement = screen.getByText('12:00 AM');
+        await userEvent.hover(timeElement.closest('a') || timeElement, {advanceTimers: jest.advanceTimersByTime});
+
         await act(async () => {
-            const timeElement = screen.getByText('12:00 AM');
-            userEvent.hover(timeElement.closest('a') || timeElement);
-
             jest.advanceTimersByTime(1000);
+        });
 
-            await waitFor(() => {
-                // Check for the tooltip content with the correct date format
-                expect(screen.getByText(/Friday, January 1, 2021 at 12:00:00 AM/)).toBeInTheDocument();
-            });
+        await waitFor(() => {
+            // Check for the tooltip content with the correct date format
+            expect(screen.getByText(/Friday, January 1, 2021 at 12:00:00 AM/)).toBeInTheDocument();
         });
 
         jest.useRealTimers();
@@ -119,16 +118,16 @@ describe('components/post_view/post_time/PostTime', () => {
 
         renderWithContext(<PostTime {...props}/>, initialState);
 
+        const timeElement = screen.getByText('12:00 PM');
+        await userEvent.hover(timeElement.closest('a') || timeElement, {advanceTimers: jest.advanceTimersByTime});
+
         await act(async () => {
-            const timeElement = screen.getByText('12:00 PM');
-            userEvent.hover(timeElement.closest('a') || timeElement);
-
             jest.advanceTimersByTime(1000);
+        });
 
-            await waitFor(() => {
-                // Check for the tooltip content with PM time
-                expect(screen.getByText(/Wednesday, January 1, 2020 at 12:00:00 PM/)).toBeInTheDocument();
-            });
+        await waitFor(() => {
+            // Check for the tooltip content with PM time
+            expect(screen.getByText(/Wednesday, January 1, 2020 at 12:00:00 PM/)).toBeInTheDocument();
         });
 
         jest.useRealTimers();
@@ -158,7 +157,7 @@ describe('components/post_view/post_time/PostTime', () => {
     });
 
     test('should render as div when isMobile returns true', () => {
-        require('utils/user_agent').isMobile.mockReturnValue(true);
+        require('@mattermost/shared/utils/user_agent').isMobile.mockReturnValue(true);
 
         renderWithContext(<PostTime {...baseProps}/>, initialState);
 
@@ -166,10 +165,10 @@ describe('components/post_view/post_time/PostTime', () => {
         expect(screen.getByText('12:00 AM').closest('div')).toHaveClass('post__permalink', 'post_permalink_mobile_view');
 
         // Reset mock
-        require('utils/user_agent').isMobile.mockReturnValue(false);
+        require('@mattermost/shared/utils/user_agent').isMobile.mockReturnValue(false);
     });
 
-    test('should call emitCloseRightHandSide when clicked on mobile', () => {
+    test('should call emitCloseRightHandSide when clicked on mobile', async () => {
         const mockEmitCloseRightHandSide = require('actions/global_actions').emitCloseRightHandSide;
 
         const props = {
@@ -180,7 +179,7 @@ describe('components/post_view/post_time/PostTime', () => {
         renderWithContext(<PostTime {...props}/>, initialState);
 
         const timeElement = screen.getByText('12:00 AM');
-        userEvent.click(timeElement.closest('a') || timeElement);
+        await userEvent.click(timeElement.closest('a') || timeElement);
 
         expect(mockEmitCloseRightHandSide).toHaveBeenCalled();
     });

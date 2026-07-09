@@ -1,8 +1,9 @@
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
 // See LICENSE.txt for license information.
 
-import {Browser, Page, test as base} from '@playwright/test';
-import {AxeResults} from 'axe-core';
+import type {Browser, Page} from '@playwright/test';
+import {test as base} from '@playwright/test';
+import type {AxeResults} from 'axe-core';
 import {AxeBuilder} from '@axe-core/playwright';
 
 import {TestBrowser} from './browser_context';
@@ -18,20 +19,45 @@ import {
 } from './flag';
 import {getBlobFromAsset, getFileFromAsset} from './file';
 import {
+    configureAIBridgeMock,
+    createMockAIAgent,
     createNewUserProfile,
+    createNewTeam,
     createRandomChannel,
     createRandomPost,
     createRandomTeam,
     createRandomUser,
+    createUserWithAttributes,
+    enableAIBridgeTestMode,
+    getAIBridgeMock,
     getAdminClient,
     initSetup,
     isOutsideRemoteUserHour,
+    makeClient,
+    mergeWithOnPremServerConfig,
+    recapCompletion,
+    resetAIBridgeMock,
+    rewriteCompletion,
+    installAndEnablePlugin,
+    isPluginActive,
 } from './server';
-import {hideDynamicChannelsContent, waitForAnimationEnd, waitUntil} from './test_action';
+import {
+    toBeFocusedWithFocusVisible,
+    hideDynamicChannelsContent,
+    waitForAnimationEnd,
+    waitUntil,
+    logFocusedElement,
+} from './test_action';
 import {pages} from './ui/pages';
 import {matchSnapshot} from './visual';
-import {stubNotification, waitForNotification} from './mock_browser_api';
-import {duration, getRandomId, simpleEmailRe, wait} from './util';
+import {
+    closeWebsockets,
+    connectWebsockets,
+    mockWebsockets,
+    stubNotification,
+    waitForNotification,
+} from './mock_browser_api';
+import {duration, getRandomId, newTestPassword, simpleEmailRe, wait} from './util';
 
 export {expect} from '@playwright/test';
 
@@ -78,26 +104,44 @@ export class PlaywrightExtended {
     // ./server
     readonly ensurePluginsLoaded;
     readonly getAdminClient;
+    readonly mergeWithOnPremServerConfig;
     readonly initSetup;
+    readonly enableAIBridgeTestMode;
+    readonly configureAIBridgeMock;
+    readonly getAIBridgeMock;
+    readonly resetAIBridgeMock;
+    readonly createMockAIAgent;
+    readonly rewriteCompletion;
+    readonly recapCompletion;
+    readonly installAndEnablePlugin;
+    readonly isPluginActive;
 
     // ./test_action
+    readonly toBeFocusedWithFocusVisible;
     readonly hideDynamicChannelsContent;
     readonly waitForAnimationEnd;
     readonly waitUntil;
+    readonly logFocusedElement;
 
     // ./mock_browser_api
     readonly stubNotification;
     readonly waitForNotification;
+    readonly mockWebsockets;
+    readonly connectWebsockets;
+    readonly closeWebsockets;
 
     // ./server
     readonly createNewUserProfile;
+    readonly createNewTeam;
     readonly isOutsideRemoteUserHour;
+    readonly makeClient;
 
     // ./visual
     readonly matchSnapshot;
 
     // ./util
     readonly duration;
+    readonly newTestPassword;
     readonly simpleEmailRe;
     readonly wait;
 
@@ -133,11 +177,24 @@ export class PlaywrightExtended {
         this.ensurePluginsLoaded = ensurePluginsLoaded;
         this.initSetup = initSetup;
         this.getAdminClient = getAdminClient;
+        this.mergeWithOnPremServerConfig = mergeWithOnPremServerConfig;
+        this.enableAIBridgeTestMode = enableAIBridgeTestMode;
+        this.configureAIBridgeMock = configureAIBridgeMock;
+        this.getAIBridgeMock = getAIBridgeMock;
+        this.resetAIBridgeMock = resetAIBridgeMock;
+        this.createMockAIAgent = createMockAIAgent;
+        this.rewriteCompletion = rewriteCompletion;
+        this.recapCompletion = recapCompletion;
         this.isOutsideRemoteUserHour = isOutsideRemoteUserHour;
+        this.installAndEnablePlugin = installAndEnablePlugin;
+        this.isPluginActive = isPluginActive;
+
         // ./test_action
+        this.toBeFocusedWithFocusVisible = toBeFocusedWithFocusVisible;
         this.hideDynamicChannelsContent = hideDynamicChannelsContent;
         this.waitForAnimationEnd = waitForAnimationEnd;
         this.waitUntil = waitUntil;
+        this.logFocusedElement = logFocusedElement;
 
         // unauthenticated page
         this.loginPage = new pages.LoginPage(page);
@@ -148,9 +205,14 @@ export class PlaywrightExtended {
         // ./mock_browser_api
         this.stubNotification = stubNotification;
         this.waitForNotification = waitForNotification;
+        this.mockWebsockets = mockWebsockets;
+        this.connectWebsockets = connectWebsockets;
+        this.closeWebsockets = closeWebsockets;
 
         // ./server
         this.createNewUserProfile = createNewUserProfile;
+        this.createNewTeam = createNewTeam;
+        this.makeClient = makeClient;
 
         // ./visual
         this.matchSnapshot = matchSnapshot;
@@ -158,6 +220,7 @@ export class PlaywrightExtended {
         // ./util
         this.duration = duration;
         this.wait = wait;
+        this.newTestPassword = newTestPassword;
         this.simpleEmailRe = simpleEmailRe;
 
         this.random = {
@@ -166,12 +229,13 @@ export class PlaywrightExtended {
             post: createRandomPost,
             team: createRandomTeam,
             user: createRandomUser,
+            userWithAttributes: createUserWithAttributes,
         };
 
         this.hasSeenLandingPage = async () => {
             // Visit the base URL to be able to set the localStorage
             await page.goto('/');
-            return await waitUntilLocalStorageIsSet(page, '__landingPageSeen__', 'true');
+            return waitUntilLocalStorageIsSet(page, '__landingPageSeen__', 'true');
         };
     }
 }
@@ -180,7 +244,7 @@ export class AxeBuilderExtended {
     readonly builder: (page: Page, options?: AxeBuilderOptions) => AxeBuilder;
 
     // See https://github.com/dequelabs/axe-core/blob/master/doc/API.md#axe-core-tags
-    readonly tags: string[] = ['wcag2a', 'wcag2aa'];
+    readonly tags: string[] = ['wcag2a', 'wcag2aa', 'wcag21aa'];
 
     constructor() {
         this.builder = (page: Page, options: AxeBuilderOptions = {}) => {

@@ -40,7 +40,7 @@ type Props = {
     results: SuggestionResults;
     onSearch: (searchType: string, searchTeam: string, searchTerms: string) => void;
     onSuggestionSelected: (value: string, matchedPretext: string) => void;
-}
+};
 
 const SearchSuggestions = ({
     id,
@@ -59,7 +59,7 @@ const SearchSuggestions = ({
 
     const searchPluginSuggestions = useSelector(getSearchPluginSuggestions);
 
-    const getItemId = useCallback((term) => `searchBoxSuggestions_item_${term}`, []);
+    const getItemId = useCallback((term: string) => `searchBoxSuggestions_item_${term}`, []);
 
     if (searchType === '' || searchType === 'messages' || searchType === 'files') {
         if (!hasResults(results)) {
@@ -97,7 +97,7 @@ const SearchSuggestions = ({
     const Component = pluginComponentInfo.component;
 
     return (
-        <ErrorBoundary>
+        <ErrorBoundary pluginId={pluginComponentInfo.pluginId}>
             <Component
                 key={pluginComponentInfo.pluginId}
                 searchTerms={searchTerms}

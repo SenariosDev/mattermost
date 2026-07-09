@@ -6,7 +6,7 @@ import React from 'react';
 import type {ActionResult} from 'mattermost-redux/types/actions';
 
 import type {updateNewMessagesAtInChannel} from 'actions/global_actions';
-import {clearMarks, countRequestsBetween, mark, shouldTrackPerformance, trackEvent} from 'actions/telemetry_actions.jsx';
+import {clearMarks, mark} from 'actions/telemetry_actions';
 import type {LoadPostsParameters, LoadPostsReturnValue, CanLoadMorePosts} from 'actions/views/channel';
 
 import LoadingScreen from 'components/loading_screen';
@@ -29,7 +29,7 @@ function markAndMeasureChannelSwitchEnd(fresh = false) {
     mark(Mark.PostListLoaded);
 
     // Send new performance metrics to server
-    const channelSwitch = measureAndReport({
+    measureAndReport({
         name: Measure.ChannelSwitch,
         startMark: Mark.ChannelLinkClicked,
         endMark: Mark.PostListLoaded,
@@ -38,7 +38,7 @@ function markAndMeasureChannelSwitchEnd(fresh = false) {
         },
         canFail: true,
     });
-    const teamSwitch = measureAndReport({
+    measureAndReport({
         name: Measure.TeamSwitch,
         startMark: Mark.TeamLinkClicked,
         endMark: Mark.PostListLoaded,
@@ -47,29 +47,6 @@ function markAndMeasureChannelSwitchEnd(fresh = false) {
         },
         canFail: true,
     });
-
-    // Send old performance metrics to Rudder
-    if (shouldTrackPerformance()) {
-        if (channelSwitch) {
-            const requestCount1 = countRequestsBetween(Mark.ChannelLinkClicked, Mark.PostListLoaded);
-
-            trackEvent('performance', Measure.ChannelSwitch, {
-                duration: Math.round(channelSwitch.duration),
-                fresh,
-                requestCount: requestCount1,
-            });
-        }
-
-        if (teamSwitch) {
-            const requestCount2 = countRequestsBetween(Mark.TeamLinkClicked, Mark.PostListLoaded);
-
-            trackEvent('performance', Measure.TeamSwitch, {
-                duration: Math.round(teamSwitch.duration),
-                fresh,
-                requestCount: requestCount2,
-            });
-        }
-    }
 
     // Clear all the metrics so that we can differentiate between a channel and team switch next time this is called
     clearMarks([
@@ -140,6 +117,8 @@ export interface Props {
     toggleShouldStartFromBottomWhenUnread: () => void;
     shouldStartFromBottomWhenUnread: boolean;
     hasInaccessiblePosts: boolean;
+
+    isChannelAutotranslated: boolean;
 
     actions: {
 
@@ -227,9 +206,10 @@ export default class PostList extends React.PureComponent<Props, State> {
     }
 
     componentDidUpdate(prevProps: Props) {
-        if (this.props.channelId !== prevProps.channelId) {
+        if (this.props.channelId !== prevProps.channelId || this.props.focusedPostId !== prevProps.focusedPostId) {
             this.postsOnLoad(this.props.channelId);
         }
+
         if (this.props.postListIds != null && prevProps.postListIds == null) {
             markAndMeasureChannelSwitchEnd(true);
         }
@@ -389,10 +369,7 @@ export default class PostList extends React.PureComponent<Props, State> {
         }
 
         return (
-            <div
-                className='post-list-holder-by-time'
-                key={'postlist-' + this.props.channelId}
-            >
+            <div className='post-list-holder-by-time'>
                 <div className='post-list__table'>
                     <div
                         id='virtualizedPostListContent'
@@ -412,6 +389,7 @@ export default class PostList extends React.PureComponent<Props, State> {
                             latestPostTimeStamp={this.props.latestPostTimeStamp}
                             isMobileView={this.props.isMobileView}
                             lastViewedAt={this.props.lastViewedAt}
+                            isChannelAutotranslated={this.props.isChannelAutotranslated}
                         />
                     </div>
                 </div>

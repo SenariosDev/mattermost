@@ -1,9 +1,10 @@
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
 // See LICENSE.txt for license information.
 
-import {Locator, expect} from '@playwright/test';
+import type {Locator} from '@playwright/test';
+import {expect} from '@playwright/test';
 
-import {ChannelsPage} from '../pages';
+import type {ChannelsPage} from '../pages';
 
 export default class GlobalHeader {
     readonly channelsPage: ChannelsPage;
@@ -12,8 +13,11 @@ export default class GlobalHeader {
     readonly accountMenuButton;
     readonly productSwitchMenu;
     readonly recentMentionsButton;
+    readonly savedMessagesButton;
     readonly settingsButton;
+    readonly helpButton;
     readonly searchBox;
+    readonly userProfileMenu;
 
     constructor(channelsPage: ChannelsPage, container: Locator) {
         this.channelsPage = channelsPage;
@@ -22,8 +26,11 @@ export default class GlobalHeader {
         this.accountMenuButton = container.getByRole('button', {name: "'s account menu"});
         this.productSwitchMenu = container.getByRole('button', {name: 'Product switch menu'});
         this.recentMentionsButton = container.getByRole('button', {name: 'Recent mentions'});
+        this.savedMessagesButton = container.getByRole('button', {name: 'Saved messages'});
         this.settingsButton = container.getByRole('button', {name: 'Settings'});
+        this.helpButton = container.getByRole('button', {name: 'Help'});
         this.searchBox = container.locator('#searchFormContainer');
+        this.userProfileMenu = container.locator('#userAccountMenuButton');
     }
 
     async toBeVisible(name: string) {
@@ -49,9 +56,32 @@ export default class GlobalHeader {
         await this.recentMentionsButton.click();
     }
 
+    async openSavedMessages() {
+        await expect(this.savedMessagesButton).toBeVisible();
+        await this.savedMessagesButton.click();
+    }
+
+    async openHelpMenu() {
+        await expect(this.helpButton).toBeVisible();
+        await this.helpButton.click();
+    }
+
+    /**
+     * Opens the Help menu and selects the "Keyboard shortcuts" item.
+     */
+    async openKeyboardShortcuts() {
+        await this.openHelpMenu();
+        await this.container.page().getByRole('menuitem', {name: 'Keyboard shortcuts'}).click();
+    }
+
     async openSearch() {
         await expect(this.searchBox).toBeVisible();
         await this.searchBox.click();
+    }
+
+    async openUserProfileMenu() {
+        await expect(this.userProfileMenu).toBeVisible();
+        await this.userProfileMenu.click();
     }
 
     async closeSearch() {

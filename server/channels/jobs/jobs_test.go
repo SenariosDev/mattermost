@@ -10,13 +10,11 @@ import (
 	"os"
 	"testing"
 
-	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 
 	"github.com/mattermost/mattermost/server/public/model"
 	"github.com/mattermost/mattermost/server/public/shared/mlog"
 	"github.com/mattermost/mattermost/server/public/shared/request"
-	"github.com/mattermost/mattermost/server/v8/channels/store"
 	"github.com/mattermost/mattermost/server/v8/channels/store/storetest"
 	"github.com/mattermost/mattermost/server/v8/channels/utils/testutils"
 	"github.com/mattermost/mattermost/server/v8/einterfaces/mocks"
@@ -210,7 +208,26 @@ func TestSetJobWarning(t *testing.T) {
 	})
 
 	t.Run("status updated", func(t *testing.T) {
-		jobServer, mockStore, _ := makeJobServer(t)
+		jobServer, mockStore, mockMetrics := makeJobServer(t)
+
+		job := &model.Job{
+			Id:   "job_id",
+			Type: "job_type",
+		}
+		retJob := *job
+		retJob.Status = model.JobStatusWarning
+
+		mockStore.JobStore.
+			On("UpdateStatus", "job_id", model.JobStatusWarning).
+			Return(&retJob, nil)
+		mockMetrics.On("DecrementJobActive", "job_type").Once()
+
+		err := jobServer.SetJobWarning(job)
+		require.Nil(t, err)
+	})
+
+	t.Run("status updated, nil metrics service", func(t *testing.T) {
+		jobServer, mockStore := makeTeamEditionJobServer(t)
 
 		job := &model.Job{
 			Id:   "job_id",
@@ -641,17 +658,9 @@ func TestRequestCancellation(t *testing.T) {
 	t.Run("cancelled, job not found", func(t *testing.T) {
 		jobServer, mockStore, _ := makeJobServer(t)
 
-		job := &model.Job{
-			Id:   "job_id",
-			Type: "job_type",
-		}
-
 		mockStore.JobStore.
 			On("UpdateStatusOptimistically", "job_id", model.JobStatusPending, model.JobStatusCanceled).
-			Return(job, nil)
-		mockStore.JobStore.
-			On("Get", mock.AnythingOfType("*request.Context"), "job_id").
-			Return(nil, &store.ErrNotFound{})
+			Return(nil, errors.New("failed to update Job with id=job_id"))
 
 		err := jobServer.RequestCancellation(ctx, "job_id")
 		expectErrorId(t, "app.job.update.app_error", err)
@@ -667,9 +676,6 @@ func TestRequestCancellation(t *testing.T) {
 
 		mockStore.JobStore.
 			On("UpdateStatusOptimistically", "job_id", model.JobStatusPending, model.JobStatusCanceled).
-			Return(job, nil)
-		mockStore.JobStore.
-			On("Get", mock.AnythingOfType("*request.Context"), "job_id").
 			Return(job, nil)
 		mockMetrics.On("DecrementJobActive", "job_type")
 

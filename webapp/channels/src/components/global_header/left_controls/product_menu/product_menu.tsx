@@ -3,14 +3,12 @@
 
 import React, {useRef} from 'react';
 import {useIntl} from 'react-intl';
-import {useDispatch, useSelector} from 'react-redux';
+import {useDispatch, useSelector, shallowEqual} from 'react-redux';
 import styled from 'styled-components';
 
-import {
-    ProductsIcon,
-} from '@mattermost/compass-icons/components';
+import {ProductsIcon} from '@mattermost/compass-icons/components';
 
-import {getLicense} from 'mattermost-redux/selectors/entities/general';
+import {isFreeEdition as isFreeEditionSelector} from 'mattermost-redux/selectors/entities/general';
 
 import {setProductMenuSwitcherOpen} from 'actions/views/product_menu';
 import {isSwitcherOpen} from 'selectors/views/product_menu';
@@ -26,10 +24,13 @@ import MenuWrapper from 'components/widgets/menu/menu_wrapper';
 
 import {useCurrentProductId, useProducts, isChannels} from 'utils/products';
 
+import type {GlobalState} from 'types/store';
+
 import ProductBranding from './product_branding';
-import ProductBrandingTeamEdition from './product_branding_team_edition';
+import ProductBrandingFreeEdition from './product_branding_team_edition';
 import ProductMenuItem from './product_menu_item';
 import ProductMenuList from './product_menu_list';
+import ProductSwitcherMenuItem from './product_switcher_menu_item';
 
 import {useClickOutsideRef} from '../../hooks';
 
@@ -76,7 +77,29 @@ const ProductMenu = (): JSX.Element => {
     const switcherOpen = useSelector(isSwitcherOpen);
     const menuRef = useRef<HTMLDivElement>(null);
     const currentProductID = useCurrentProductId();
-    const license = useSelector(getLicense);
+    const isFreeEdition = useSelector(isFreeEditionSelector);
+    const visibleSwitcherItems = useSelector(
+        (state: GlobalState) => {
+            if (!isSwitcherOpen(state)) {
+                return [];
+            }
+            return (state.plugins.components.ProductSwitcherMenuItem ?? []).filter((item) => {
+                if (item.isHidden === undefined) {
+                    return true;
+                }
+                try {
+                    return !item.isHidden(state);
+                } catch (e) {
+                    // eslint-disable-next-line no-console
+                    console.error(`ProductSwitcherMenuItem ${item.pluginId}:${item.id} isHidden threw`, e);
+
+                    // Fail closed: hide the item if its predicate throws.
+                    return false;
+                }
+            });
+        },
+        shallowEqual,
+    );
 
     const handleClick = () => dispatch(setProductMenuSwitcherOpen(!switcherOpen));
 
@@ -85,7 +108,7 @@ const ProductMenu = (): JSX.Element => {
     const visitSystemConsoleTaskName = OnboardingTasksName.VISIT_SYSTEM_CONSOLE;
     const handleVisitConsoleClick = () => {
         const steps = TaskNameMapToSteps[visitSystemConsoleTaskName];
-        handleOnBoardingTaskData(visitSystemConsoleTaskName, steps.FINISHED, true, 'finish');
+        handleOnBoardingTaskData(visitSystemConsoleTaskName, steps.FINISHED);
         localStorage.setItem(OnboardingTaskCategory, 'true');
     };
 
@@ -132,8 +155,11 @@ const ProductMenu = (): JSX.Element => {
                             size={20}
                             color='rgba(var(--sidebar-text-rgb), 0.56)'
                         />
-                        {license.IsLicensed === 'false' && <ProductBrandingTeamEdition/>}
-                        {license.IsLicensed === 'true' && <ProductBranding/>}
+                        {isFreeEdition ? (
+                            <ProductBrandingFreeEdition/>
+                        ) : (
+                            <ProductBranding/>
+                        )}
                     </ProductMenuButton>
                 </ProductMenuContainer>
                 <Menu
@@ -150,6 +176,17 @@ const ProductMenu = (): JSX.Element => {
                         onClick={handleClick}
                     />
                     {productItems}
+                    {visibleSwitcherItems.length > 0 && (
+                        <Menu.Group>
+                            {visibleSwitcherItems.map((item) => (
+                                <ProductSwitcherMenuItem
+                                    key={item.id}
+                                    item={item}
+                                    onClose={handleClick}
+                                />
+                            ))}
+                        </Menu.Group>
+                    )}
                     <ProductMenuList
                         isMessaging={isChannels(currentProductID)}
                         onClick={handleClick}

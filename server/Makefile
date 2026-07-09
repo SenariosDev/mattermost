@@ -1,4 +1,4 @@
-.PHONY: build package run stop run-client run-server run-node run-haserver stop-haserver stop-client stop-server restart restart-server restart-client restart-haserver start-docker update-docker clean-dist clean nuke check-style check-client-style check-server-style check-unit-tests test dist run-client-tests setup-run-client-tests cleanup-run-client-tests test-client build-linux build-osx build-windows package-prep package-linux package-osx package-windows internal-test-web-client vet run-server-for-web-client-tests diff-config prepackaged-plugins prepackaged-binaries test-server test-server-ee test-server-quick test-server-race test-mmctl-unit test-mmctl-e2e test-mmctl test-mmctl-coverage mmctl-build mmctl-docs new-migration migrations-extract test-public mocks-public
+.PHONY: build package run stop run-client run-server run-node run-haserver stop-haserver stop-client stop-server restart restart-server restart-client restart-haserver start-docker update-docker clean-dist clean nuke check-style check-client-style check-server-style check-unit-tests test dist run-client-tests setup-run-client-tests cleanup-run-client-tests test-client build-linux build-osx build-freebsd build-windows package-prep package-linux package-osx package-windows internal-test-web-client vet run-server-for-web-client-tests diff-config prepackaged-plugins prepackaged-binaries test-server test-server-ee test-server-elasticsearch test-server-opensearch test-server-quick test-server-race test-mmctl-unit test-mmctl-e2e test-mmctl test-mmctl-coverage mmctl-build mmctl-docs new-migration migrations-extract check-migration-changes test-public mocks-public run-server-faketime default-roles-permissions generated check-go-fix
 
 ROOT := $(dir $(abspath $(lastword $(MAKEFILE_LIST))))
 
@@ -8,10 +8,6 @@ else
 	PLATFORM := $(shell uname)
 endif
 
-# Detect Apple Silicon and set a flag.
-ifeq ($(shell uname)/$(shell uname -m),Darwin/arm64)
-  ARM_BASED_MAC = true
-endif
 
 define LICENSE_HEADER
 // Copyright (c) 2015-present Mattermost, Inc. All Rights Reserved.
@@ -52,7 +48,13 @@ MMCTL_BUILD_TAGS =
 MMCTL_TESTFLAGS ?= -timeout 30m
 MMCTL_PKG = github.com/mattermost/mattermost/server/v8/cmd/mmctl/commands
 MMCTL_BUILD_DATE = $(shell date -u +'%Y-%m-%dT%H:%M:%SZ')
+MMCTL_GIT_COMMIT = $(shell git rev-parse HEAD)
+MMCTL_GIT_TREE_STATE = $(shell if [ -n "$$(git status --porcelain 2>/dev/null)" ]; then echo "dirty"; else echo "clean"; fi)
+MMCTL_COMMIT_DATE = $(shell TZ=UTC git log -1 --date=format-local:'%Y-%m-%dT%H:%M:%SZ' --format='%cd' 2>/dev/null || echo "dev")
 MMCTL_LDFLAGS += -X "$(MMCTL_PKG).buildDate=$(MMCTL_BUILD_DATE)"
+MMCTL_LDFLAGS += -X "$(MMCTL_PKG).gitCommit=$(MMCTL_GIT_COMMIT)"
+MMCTL_LDFLAGS += -X "$(MMCTL_PKG).gitTreeState=$(MMCTL_GIT_TREE_STATE)"
+MMCTL_LDFLAGS += -X "$(MMCTL_PKG).commitDate=$(MMCTL_COMMIT_DATE)"
 
 # Enterprise
 BUILD_ENTERPRISE_DIR ?= ../../enterprise
@@ -78,6 +80,11 @@ else
 	BUILD_TYPE_NAME = team
 endif
 
+FIPS_ENABLED ?= false
+ifeq ($(FIPS_ENABLED),true)
+	BUILD_TYPE_NAME := $(BUILD_TYPE_NAME)-fips
+endif
+
 # Clean up the old means of importing enterprise source, if it exists
 ifneq ($(wildcard channels/imports/imports.go),)
 	IGNORE := $(shell rm -f channels/imports/imports.go)
@@ -101,11 +108,18 @@ ifeq ($(HOME),/)
 endif
 
 # Go Flags
-GOFLAGS ?= $(GOFLAGS:)
+# Use -buildvcs=false to avoid embedding VCS info which can cause false positives in container scanning tools
+export GOFLAGS ?= -buildvcs=false
 # We need to export GOBIN to allow it to be set
 # for processes spawned from the Makefile
 export GOBIN ?= $(PWD)/bin
 GO ?= go
+
+ifeq ($(FIPS_ENABLED),true)
+	BUILD_TAGS += requirefips
+	MMCTL_BUILD_TAGS += requirefips
+endif
+
 DELVE ?= dlv
 LDFLAGS += -X "github.com/mattermost/mattermost/server/public/model.BuildNumber=$(BUILD_NUMBER)"
 LDFLAGS += -X "github.com/mattermost/mattermost/server/public/model.BuildDate=$(BUILD_DATE)"
@@ -132,6 +146,8 @@ DIST_PATH_LIN_AMD64=$(DIST_ROOT)/linux_amd64/mattermost
 DIST_PATH_LIN_ARM64=$(DIST_ROOT)/linux_arm64/mattermost
 DIST_PATH_OSX_AMD64=$(DIST_ROOT)/darwin_amd64/mattermost
 DIST_PATH_OSX_ARM64=$(DIST_ROOT)/darwin_arm64/mattermost
+DIST_PATH_FREEBSD_AMD64=$(DIST_ROOT)/freebsd_amd64/mattermost
+DIST_PATH_FREEBSD_ARM64=$(DIST_ROOT)/freebsd_arm64/mattermost
 DIST_PATH_WIN=$(DIST_ROOT)/windows/mattermost
 
 # Packages lists
@@ -142,21 +158,30 @@ TEMPLATES_DIR=templates
 
 # Plugins Packages
 PLUGIN_PACKAGES ?= $(PLUGIN_PACKAGES:)
-PLUGIN_PACKAGES += mattermost-plugin-calls-v1.10.0
-PLUGIN_PACKAGES += mattermost-plugin-github-v2.4.0
-PLUGIN_PACKAGES += mattermost-plugin-gitlab-v1.10.0
-PLUGIN_PACKAGES += mattermost-plugin-jira-v4.3.0
-PLUGIN_PACKAGES += mattermost-plugin-playbooks-v2.4.0
-PLUGIN_PACKAGES += mattermost-plugin-servicenow-v2.3.4
-PLUGIN_PACKAGES += mattermost-plugin-zoom-v1.8.0
-PLUGIN_PACKAGES += mattermost-plugin-agents-v1.2.4
-PLUGIN_PACKAGES += mattermost-plugin-boards-v9.1.5
-PLUGIN_PACKAGES += mattermost-plugin-msteams-v2.2.1
+PLUGIN_PACKAGES += mattermost-plugin-calls-v1.12.1
+PLUGIN_PACKAGES += mattermost-plugin-github-v2.7.1
+PLUGIN_PACKAGES += mattermost-plugin-gitlab-v1.13.0
+PLUGIN_PACKAGES += mattermost-plugin-jira-v4.7.1
+PLUGIN_PACKAGES += mattermost-plugin-playbooks-v2.10.0
+PLUGIN_PACKAGES += mattermost-plugin-servicenow-v2.4.0
+PLUGIN_PACKAGES += mattermost-plugin-zoom-v1.13.0
+PLUGIN_PACKAGES += mattermost-plugin-agents-v2.4.2
+PLUGIN_PACKAGES += mattermost-plugin-boards-v9.3.0
 PLUGIN_PACKAGES += mattermost-plugin-user-survey-v1.1.1
-PLUGIN_PACKAGES += mattermost-plugin-mscalendar-v1.3.4
-PLUGIN_PACKAGES += mattermost-plugin-msteams-meetings-v2.2.0
+PLUGIN_PACKAGES += mattermost-plugin-mscalendar-v1.6.1
+PLUGIN_PACKAGES += mattermost-plugin-msteams-meetings-v2.4.1
 PLUGIN_PACKAGES += mattermost-plugin-metrics-v0.7.0
-PLUGIN_PACKAGES += mattermost-plugin-channel-export-v1.2.1
+PLUGIN_PACKAGES += mattermost-plugin-channel-export-v1.3.0
+
+# Overwrite the definition of PLUGIN_PACKAGES with the list of FIPS-ready plugins
+# Note that the '+' in the file name is encoded as %2B for the URL we use to
+# download the package from to work. This will no longer be needed when we unify
+# the way we pre-package FIPS and non-FIPS plugins.
+ifeq ($(FIPS_ENABLED),true)
+	PLUGIN_PACKAGES  = mattermost-plugin-playbooks-v2.10.0%2B090a26d-fips
+	PLUGIN_PACKAGES += mattermost-plugin-agents-v2.4.2%2B1305067-fips
+	PLUGIN_PACKAGES += mattermost-plugin-boards-v9.3.0%2Bd454327-fips
+endif
 
 EE_PACKAGES=$(shell $(GO) list $(BUILD_ENTERPRISE_DIR)/...)
 
@@ -196,34 +221,41 @@ ifneq ("$(wildcard ./docker-compose.override.yaml)","")
   DOCKER_COMPOSE_OVERRIDE=-f docker-compose.override.yaml
 endif
 
-ifeq ($(ARM_BASED_MAC),true)
-  $(info Apple Silicon detected, applying elasticsearch override)
-  DOCKER_COMPOSE_OVERRIDE := -f docker-compose.makefile.m1.yml $(DOCKER_COMPOSE_OVERRIDE)
+
+# Support for pgvector postgres image
+MM_USE_PGVECTOR ?= false
+ifeq ($(MM_USE_PGVECTOR),true)
+  $(info Using pgvector/pgvector image for PostgreSQL)
+  DOCKER_COMPOSE_OVERRIDE := -f docker-compose.pgvector.yml $(DOCKER_COMPOSE_OVERRIDE)
 endif
 
 ifneq ($(DOCKER_SERVICES_OVERRIDE),true)
   ifeq (,$(findstring minio,$(ENABLED_DOCKER_SERVICES)))
     TEMP_DOCKER_SERVICES:=$(TEMP_DOCKER_SERVICES) minio
   endif
+  ifeq (,$(findstring azurite,$(ENABLED_DOCKER_SERVICES)))
+    TEMP_DOCKER_SERVICES:=$(TEMP_DOCKER_SERVICES) azurite
+  endif
   ifeq ($(BUILD_ENTERPRISE_READY),true)
     ifeq (,$(findstring openldap,$(ENABLED_DOCKER_SERVICES)))
       TEMP_DOCKER_SERVICES:=$(TEMP_DOCKER_SERVICES) openldap
     endif
-    ifeq (,$(findstring elasticsearch,$(ENABLED_DOCKER_SERVICES)))
-      TEMP_DOCKER_SERVICES:=$(TEMP_DOCKER_SERVICES) elasticsearch
-	endif
   endif
   ENABLED_DOCKER_SERVICES:=$(ENABLED_DOCKER_SERVICES) $(TEMP_DOCKER_SERVICES)
 endif
 
-start-docker: ## Starts the docker containers for local development.
+start-docker: setup-go-work ## Starts the docker containers for local development.
 ifneq ($(IS_CI),false)
 	@echo CI Build: skipping docker start
 else ifeq ($(MM_NO_DOCKER),true)
 	@echo No Docker Enabled: skipping docker start
 else
 	@echo Starting docker containers
+ifeq ($(MM_USE_PGVECTOR),true)
+	@echo Using pgvector PostgreSQL image
+endif
 
+	mkdir -p logs
 	docker compose rm start_dependencies
 	$(GO) run ./build/docker-compose-generator/main.go $(ENABLED_DOCKER_SERVICES) | docker compose -f docker-compose.makefile.yml -f /dev/stdin $(DOCKER_COMPOSE_OVERRIDE) run -T --rm start_dependencies
   ifneq (,$(findstring openldap,$(ENABLED_DOCKER_SERVICES)))
@@ -233,7 +265,7 @@ else
   endif
 endif
 
-update-docker: stop-docker ## Updates the docker containers for local development.
+update-docker: setup-go-work stop-docker ## Updates the docker containers for local development.
 	@echo Updating docker containers
 
 	$(GO) run ./build/docker-compose-generator/main.go $(ENABLED_DOCKER_SERVICES) | docker compose -f docker-compose.makefile.yml -f /dev/stdin $(DOCKER_COMPOSE_OVERRIDE) up --no-start
@@ -266,9 +298,11 @@ else
 
 	docker compose down -v
 	docker compose rm -v
+
+	docker volume rm mattermost-server_postgres-14-data || true
 endif
 
-plugin-checker:
+plugin-checker: setup-go-work
 	$(GO) run $(GOFLAGS) ./public/plugin/checker
 
 prepackaged-plugins: ## Populate the prepackaged-plugins directory.
@@ -293,21 +327,12 @@ golang-versions: ## Install Golang versions used for compatibility testing (e.g.
 	done
 	export GO_COMPATIBILITY_TEST_VERSIONS="${GO_COMPATIBILITY_TEST_VERSIONS}"
 
-golangci-lint: ## Run golangci-lint on codebase
-	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6
+golangci-lint: setup-go-work ## Run golangci-lint on codebase
+	$(GO) install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
 ifeq ($(BUILD_ENTERPRISE_READY),true)
 	$(GOBIN)/golangci-lint run ./... ./public/... $(BUILD_ENTERPRISE_DIR)/...
 else
 	$(GOBIN)/golangci-lint run ./... ./public/...
-endif
-
-modernize: ## Run modernize linter on codebase
-## https://pkg.go.dev/golang.org/x/tools/gopls/internal/analysis/modernize is not support in golangci-lint.
-## We need to invoke it directly.
-ifeq ($(BUILD_ENTERPRISE_READY),true)
-	go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.19.1 -test ./... ./public/... $(BUILD_ENTERPRISE_DIR)/...
-else
-	go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@v0.19.1 -test ./... ./public/...
 endif
 
 i18n-extract: ## Extract strings for translation from the source code
@@ -319,19 +344,16 @@ i18n-check: ## Exit on empty translation strings and translation source strings
 	$(GOBIN)/mmgotool i18n clean-empty --portal-dir="" --check
 	$(GOBIN)/mmgotool i18n check-empty-src --portal-dir=""
 
-store-mocks: ## Creates mock files.
+store-mocks: setup-go-work ## Creates mock files.
 	$(GO) install github.com/vektra/mockery/v2/...@v2.53.4
 	$(GOBIN)/mockery --config channels/store/.mockery.yaml
 
-cache-mocks:
+cache-mocks: setup-go-work
 	$(GO) install github.com/vektra/mockery/v2/...@v2.53.4
 	$(GOBIN)/mockery --config platform/services/cache/.mockery.yaml
 
-telemetry-mocks: ## Creates mock files.
-	$(GO) install github.com/vektra/mockery/v2/...@v2.53.4
-	$(GOBIN)/mockery --config platform/services/telemetry/.mockery.yaml
 
-store-layers: ## Generate layers for the store
+store-layers: setup-go-work ## Generate layers for the store
 	$(GO) generate $(GOFLAGS) ./channels/store
 
 new-migration: ## Creates a new migration. Run with make new-migration name=<>
@@ -339,54 +361,58 @@ new-migration: ## Creates a new migration. Run with make new-migration name=<>
 	@echo "Generating new migration for postgres"
 	$(GOBIN)/morph new script $(name) --driver postgres --dir channels/db/migrations --sequence
 
-filestore-mocks: ## Creates mock files.
+filestore-mocks: setup-go-work ## Creates mock files.
 	$(GO) install github.com/vektra/mockery/v2/...@v2.53.4
 	$(GOBIN)/mockery --config platform/shared/filestore/.mockery.yaml
 
-ldap-mocks: ## Creates mock files for ldap.
+ldap-mocks: setup-go-work ## Creates mock files for ldap.
 	$(GO) install github.com/vektra/mockery/v2/...@v2.53.4
 	$(GOBIN)/mockery --dir $(BUILD_ENTERPRISE_DIR)/ldap --all --inpackage --note 'Regenerate this file using `make ldap-mocks`.'
 
-plugin-mocks: ## Creates mock files for plugins.
+plugin-mocks: setup-go-work ## Creates mock files for plugins.
 	$(GO) install github.com/vektra/mockery/v2/...@v2.53.4
 	$(GOBIN)/mockery --config public/plugin/.mockery.yaml
 
-einterfaces-mocks: ## Creates mock files for einterfaces.
+einterfaces-mocks: setup-go-work ## Creates mock files for einterfaces.
 	$(GO) install github.com/vektra/mockery/v2/...@v2.53.4
 	$(GOBIN)/mockery --config einterfaces/.mockery.yaml
 
-searchengine-mocks: ## Creates mock files for searchengines.
+searchengine-mocks: setup-go-work ## Creates mock files for searchengines.
 	$(GO) install github.com/vektra/mockery/v2/...@v2.53.4
 	$(GOBIN)/mockery --config platform/services/searchengine/.mockery.yaml
 
-sharedchannel-mocks: ## Creates mock files for shared channels.
+sharedchannel-mocks: setup-go-work ## Creates mock files for shared channels.
 	$(GO) install github.com/vektra/mockery/v2/...@v2.53.4
 	$(GOBIN)/mockery --config platform/services/sharedchannel/.mockery.yaml
 
-misc-mocks: ## Creates mocks for misc interfaces.
+misc-mocks: setup-go-work ## Creates mocks for misc interfaces.
 	$(GO) install github.com/vektra/mockery/v2/...@v2.53.4
 	$(GOBIN)/mockery --config channels/utils/.mockery.yaml
 
-email-mocks: ## Creates mocks for misc interfaces.
+email-mocks: setup-go-work ## Creates mocks for misc interfaces.
 	$(GO) install github.com/vektra/mockery/v2/...@v2.53.4
 	$(GOBIN)/mockery --config channels/app/email/.mockery.yaml
 
-platform-mocks: ## Creates mocks for platform interfaces.
+platform-mocks: setup-go-work ## Creates mocks for platform interfaces.
 	$(GO) install github.com/vektra/mockery/v2/...@v2.53.4
 	$(GOBIN)/mockery --config channels/app/platform/.mockery.yaml
 
-mmctl-mocks: ## Creates mocks for mmctl
+mmctl-mocks: setup-go-work ## Creates mocks for mmctl
 	$(GO) install github.com/golang/mock/mockgen@v1.6.0
 	$(GOBIN)/mockgen -destination=cmd/mmctl/mocks/client_mock.go -copyright_file=cmd/mmctl/mocks/copyright.txt -package=mocks github.com/mattermost/mattermost/server/v8/cmd/mmctl/client Client
 
-pluginapi: ## Generates api and hooks glue code for plugins
+pluginapi: setup-go-work ## Generates api and hooks glue code for plugins
 	cd ./public && $(GO) generate $(GOFLAGS) ./plugin
 
-mocks: store-mocks telemetry-mocks filestore-mocks ldap-mocks plugin-mocks einterfaces-mocks searchengine-mocks sharedchannel-mocks misc-mocks email-mocks platform-mocks mmctl-mocks mocks-public cache-mocks
+default-roles-permissions: setup-go-work start-docker ## Generates default_roles_permissions.js by snapshotting a live database.
+	$(GO) run $(GOFLAGS) ./scripts/default_permissions_generator \
+		-out ../e2e-tests/cypress/tests/support/api/default_roles_permissions.js
+
+mocks: store-mocks filestore-mocks ldap-mocks plugin-mocks einterfaces-mocks searchengine-mocks sharedchannel-mocks misc-mocks email-mocks platform-mocks mmctl-mocks mocks-public cache-mocks
 
 layers: store-layers pluginapi
 
-generated: mocks layers
+generated: mocks layers default-roles-permissions
 
 check-prereqs-enterprise: setup-go-work ## Checks prerequisite software status for enterprise.
 ifeq ($(BUILD_ENTERPRISE_READY),true)
@@ -395,30 +421,40 @@ endif
 
 setup-go-work: export BUILD_ENTERPRISE_READY := $(BUILD_ENTERPRISE_READY)
 setup-go-work: ## Sets up your go.work file
-ifneq ($(IGNORE_GO_WORK_IF_EXISTS),true)
-	@echo "Creating a go.work file"
-	rm -f go.work
-	$(GO) work init
-	$(GO) work use .
-	$(GO) work use ./public
-ifeq ($(BUILD_ENTERPRISE_READY),true)
-	$(GO) work use ../../enterprise
-endif
+ifneq ($(SKIP_SETUP_GO_WORK),true)
+	@set -e; \
+	if [ -f go.work ]; then cp -p go.work go.work.bak; fi; \
+	rm -f go.work; \
+	$(GO) work init; \
+	$(GO) work use .; \
+	$(GO) work use ./public; \
+	if [ "$(BUILD_ENTERPRISE_READY)" = "true" ]; then \
+		$(GO) work use $(BUILD_ENTERPRISE_DIR); \
+	fi; \
+	if [ -f go.work.bak ] && cmp -s go.work go.work.bak; then \
+		mv go.work.bak go.work; \
+	else \
+		rm -f go.work.bak; \
+		echo "Created go.work file"; \
+	fi
 endif
 
-check-style: plugin-checker vet modernize golangci-lint ## Runs style/lint checks
+check-go-fix: setup-go-work ## Check if go fix would modify any files.
+	$(GO) fix -diff ./...
+
+check-style: plugin-checker vet golangci-lint check-go-fix ## Runs style/lint checks
 
 gotestsum:
-	$(GO) install gotest.tools/gotestsum@v1.11.0
+	$(GO) install gotest.tools/gotestsum@v1.13.0
 
-test-compile: gotestsum ## Compile tests.
+test-compile: setup-go-work gotestsum ## Compile tests.
 	@echo COMPILE TESTS
 
 	for package in $(TE_PACKAGES) $(EE_PACKAGES); do \
 		$(GO) test $(GOFLAGS) -c $$package; \
 	done
 
-modules-tidy: ## Tidy Go modules
+modules-tidy: setup-go-work ## Tidy Go modules
 	mv enterprise/external_imports.go enterprise/external_imports.go.orig
 	-$(GO) mod tidy
 	-cd public && $(GO) mod tidy
@@ -436,9 +472,9 @@ test-server-race: export GOTESTSUM_JUNITFILE := $(GOTESTSUM_JUNITFILE)
 test-server-race: export GOTESTSUM_JSONFILE := $(GOTESTSUM_JSONFILE)
 test-server-race: test-server-pre
 ifeq ($(IS_CI),true)
-	GOMAXPROCS=4 $(GOBIN)/gotestsum --rerun-fails=3 --packages="$(TE_PACKAGES) $(EE_PACKAGES)" -- -race $(GOFLAGS) -timeout=90m
+	GOMAXPROCS=4 $(GOBIN)/gotestsum --rerun-fails=3 --packages="$(TE_PACKAGES) $(EE_PACKAGES)" -- -race $(GOFLAGS) -timeout=3h
 else
-	$(GOBIN)/gotestsum --rerun-fails=3 --packages="$(TE_PACKAGES) $(EE_PACKAGES)" -- -race $(GOFLAGS) -timeout=90m
+	$(GOBIN)/gotestsum --rerun-fails=3 --packages="$(TE_PACKAGES) $(EE_PACKAGES)" -- -race $(GOFLAGS) -timeout=3h
 endif
 ifneq ($(IS_CI),true)
   ifneq ($(MM_NO_DOCKER),true)
@@ -470,6 +506,24 @@ test-server-ee: check-prereqs-enterprise start-docker gotestsum ## Runs EE tests
 	@echo Running only EE tests
 	$(GOBIN)/gotestsum --packages="$(EE_PACKAGES)" -- $(GOFLAGS) -timeout=20m
 
+ES_PACKAGES=$(shell $(GO) list ./enterprise/elasticsearch/...)
+
+test-server-elasticsearch: export GOTESTSUM_FORMAT := $(GOTESTSUM_FORMAT)
+test-server-elasticsearch: export GOTESTSUM_JUNITFILE := $(GOTESTSUM_JUNITFILE)
+test-server-elasticsearch: export GOTESTSUM_JSONFILE := $(GOTESTSUM_JSONFILE)
+test-server-elasticsearch: check-prereqs-enterprise start-docker gotestsum ## Runs Elasticsearch tests.
+	@echo Running only Elasticsearch tests
+	$(GOBIN)/gotestsum --rerun-fails=3 --packages="$(ES_PACKAGES)" -- $(GOFLAGS) -timeout=20m
+
+OS_PACKAGES=$(shell $(GO) list ./enterprise/elasticsearch/opensearch/...)
+
+test-server-opensearch: export GOTESTSUM_FORMAT := $(GOTESTSUM_FORMAT)
+test-server-opensearch: export GOTESTSUM_JUNITFILE := $(GOTESTSUM_JUNITFILE)
+test-server-opensearch: export GOTESTSUM_JSONFILE := $(GOTESTSUM_JSONFILE)
+test-server-opensearch: check-prereqs-enterprise start-docker gotestsum ## Runs OpenSearch tests.
+	@echo Running only OpenSearch tests
+	$(GOBIN)/gotestsum --rerun-fails=3 --packages="$(OS_PACKAGES)" -- $(GOFLAGS) -timeout=20m
+
 test-server-quick: export GOTESTSUM_FORMAT := $(GOTESTSUM_FORMAT)
 test-server-quick: export GOTESTSUM_JUNITFILE := $(GOTESTSUM_JUNITFILE)
 test-server-quick: export GOTESTSUM_JSONFILE := $(GOTESTSUM_JSONFILE)
@@ -482,10 +536,10 @@ else
 	$(GOBIN)/gotestsum --packages="$(TE_PACKAGES)" -- $(GOFLAGS) -short
 endif
 
-internal-test-web-client: ## Runs web client tests.
+internal-test-web-client: setup-go-work ## Runs web client tests.
 	$(GO) run $(GOFLAGS) $(PLATFORM_FILES) test web_client_tests
 
-run-server-for-web-client-tests: ## Tests the server for web client.
+run-server-for-web-client-tests: setup-go-work ## Tests the server for web client.
 	$(GO) run $(GOFLAGS) $(PLATFORM_FILES) test web_client_tests_server
 
 test-client: ## Test client app.
@@ -563,11 +617,41 @@ build-templates: ## Compile all mjml email templates
 
 run-server: setup-go-work prepackaged-binaries validate-go-version start-docker client ## Starts the server.
 	@echo Running mattermost for development
+ifeq ($(MM_USE_PGVECTOR),true)
+	@echo With pgvector PostgreSQL support enabled
+endif
 
 	mkdir -p $(BUILD_WEBAPP_DIR)/channels/dist/files
 	$(GO) run $(GOFLAGS) -ldflags '$(LDFLAGS)' -tags '$(BUILD_TAGS)' $(PLATFORM_FILES) $(RUN_IN_BACKGROUND)
 
-debug-server: start-docker ## Compile and start server using delve.
+run-server-faketime: setup-go-work prepackaged-binaries validate-go-version start-docker client ## Starts the server with FAKETIME.
+ifndef FAKETIME
+	$(error FAKETIME is not set. Usage: make run-server-faketime FAKETIME="+30d")
+endif
+	@if [ "$$(uname)" = "Darwin" ]; then \
+		LIBFAKETIME="$$(brew --prefix libfaketime 2>/dev/null)/lib/faketime/libfaketime.1.dylib"; \
+	else \
+		for p in /usr/lib/x86_64-linux-gnu/faketime /usr/lib/aarch64-linux-gnu/faketime /usr/lib/faketime /usr/lib64/faketime; do \
+			if [ -f "$$p/libfaketime.so.1" ]; then LIBFAKETIME="$$p/libfaketime.so.1"; break; fi; \
+		done; \
+	fi; \
+	[ -f "$$LIBFAKETIME" ] || { echo "Error: libfaketime not found. Install it with your package manager."; exit 1; }; \
+	echo "Building mattermost..."; \
+	$(GO) build $(GOFLAGS) -ldflags '$(LDFLAGS)' -tags '$(BUILD_TAGS)' -o $(GOBIN)/mattermost-faketime $(PLATFORM_FILES); \
+	echo "Running mattermost with FAKETIME=$(FAKETIME) (libfaketime: $$LIBFAKETIME)"; \
+	mkdir -p $(BUILD_WEBAPP_DIR)/channels/dist/files; \
+	if [ "$$(uname)" = "Darwin" ]; then \
+		DYLD_INSERT_LIBRARIES="$$LIBFAKETIME" DYLD_FORCE_FLAT_NAMESPACE=1 FAKETIME="$(FAKETIME)" FAKETIME_NO_CACHE=1 \
+			$(GOBIN)/mattermost-faketime $(RUN_IN_BACKGROUND) \
+	else \
+		LD_PRELOAD="$$LIBFAKETIME" FAKETIME="$(FAKETIME)" FAKETIME_NO_CACHE=1 \
+			$(GOBIN)/mattermost-faketime $(RUN_IN_BACKGROUND) \
+	fi
+
+run-server-pgvector: ## Starts the server with pgvector PostgreSQL image.
+	@MM_USE_PGVECTOR=true $(MAKE) run-server
+
+debug-server: setup-go-work start-docker ## Compile and start server using delve.
 	mkdir -p $(BUILD_WEBAPP_DIR)/channels/dist/files
 	$(DELVE) debug $(PLATFORM_FILES) --build-flags="-ldflags '\
 		-X github.com/mattermost/mattermost/server/public/model.BuildNumber=$(BUILD_NUMBER)\
@@ -577,7 +661,7 @@ debug-server: start-docker ## Compile and start server using delve.
 		-X github.com/mattermost/mattermost/server/public/model.BuildEnterpriseReady=$(BUILD_ENTERPRISE_READY)'\
 		-tags '$(BUILD_TAGS)'"
 
-debug-server-headless: start-docker ## Debug server from within an IDE like VSCode or IntelliJ.
+debug-server-headless: setup-go-work start-docker ## Debug server from within an IDE like VSCode or IntelliJ.
 	mkdir -p $(BUILD_WEBAPP_DIR)/channels/dist/files
 	$(DELVE) debug --headless --listen=:2345 --api-version=2 --accept-multiclient $(PLATFORM_FILES) --build-flags="-ldflags '\
 		-X github.com/mattermost/mattermost/server/public/model.BuildNumber=$(BUILD_NUMBER)\
@@ -594,12 +678,12 @@ run-node: export MM_SERVICESETTINGS_LOCALMODESOCKETLOCATION=/var/tmp/mattermost_
 run-node: export MM_SQLSETTINGS_DRIVERNAME=postgres
 run-node: export MM_SQLSETTINGS_DATASOURCE=postgres://mmuser:mostest@localhost/mattermost_node_test?sslmode=disable&sslmode=disable&connect_timeout=10&binary_parameters=yes
 
-run-node: start-docker ## Runs a shared channel node.
+run-node: setup-go-work start-docker ## Runs a shared channel node.
 	@echo Running mattermost node
 
 	$(GO) run $(GOFLAGS) -ldflags '$(LDFLAGS)' -tags '$(BUILD_TAGS)' $(PLATFORM_FILES) $(RUN_IN_BACKGROUND)
 
-run-cli: start-docker ## Runs CLI.
+run-cli: setup-go-work start-docker ## Runs CLI.
 	@echo Running mattermost for development
 	@echo Example should be like 'make ARGS="-version" run-cli'
 
@@ -620,6 +704,9 @@ run-client-fullmap: client ## Legacy alias to run-client
 	cd $(BUILD_WEBAPP_DIR) && $(MAKE) run
 
 run: run-server run-client ## Runs the server and webapp.
+
+run-pgvector: ## Runs the server and webapp with pgvector PostgreSQL image.
+	@MM_USE_PGVECTOR=true $(MAKE) run
 
 run-fullmap: run-server run-client ## Legacy alias to run
 
@@ -651,6 +738,9 @@ restart: restart-server restart-client ## Restarts the server and webapp.
 
 restart-server: | stop-server run-server ## Restarts the mattermost server to pick up development change.
 
+restart-server-pgvector: ## Restarts the server with pgvector PostgreSQL image.
+	@MM_USE_PGVECTOR=true $(MAKE) restart-server
+
 restart-haserver:
 	@echo Restarting mattermost in an HA topology
 
@@ -661,7 +751,7 @@ restart-haserver:
 
 restart-client: | stop-client run-client ## Restarts the webapp.
 
-run-job-server: ## Runs the background job server.
+run-job-server: setup-go-work ## Runs the background job server.
 	@echo Running job server for development
 	$(GO) run $(GOFLAGS) -ldflags '$(LDFLAGS)' -tags '$(BUILD_TAGS)' $(PLATFORM_FILES) jobserver &
 
@@ -702,7 +792,7 @@ config-openid: ## Configures OpenID.
 
 	@echo Finished setting up configuration for local OpenID with keycloak
 
-config-reset: ## Resets the config/config.json file to the default production values.
+config-reset: setup-go-work ## Resets the config/config.json file to the default production values.
 	@echo Resetting configuration to production default
 	rm -f config/config.json
 	OUTPUT_CONFIG=$(PWD)/config/config.json $(GO) run $(GOFLAGS) -tags production ./scripts/config_generator
@@ -710,7 +800,7 @@ config-reset: ## Resets the config/config.json file to the default production va
 diff-config: ## Compares default configuration between two mattermost versions
 	@./scripts/diff-config.sh
 
-clean: stop-docker ## Clean up everything except persistent server data.
+clean: setup-go-work stop-docker ## Clean up everything except persistent server data.
 	@echo Cleaning
 
 	rm -Rf $(DIST_ROOT)
@@ -759,27 +849,40 @@ ifeq ($(BUILD_ENTERPRISE_READY),true)
 	mv enterprise/external_imports.go.orig enterprise/external_imports.go
 endif
 
-vet: ## Run mattermost go vet specific checks
-	## Note that it is pinned to a specific commit, rather than a branch. This is to prevent
-	## having to backport the fix to multiple release branches for any new change.
-	$(GO) install github.com/mattermost/mattermost-govet/v2@8e4d46e3fad88497dbfe073788a87e75bbae717c
-	$(GO) vet -vettool=$(GOBIN)/mattermost-govet -structuredLogging -inconsistentReceiverName -emptyStrCmp -tFatal -configtelemetry -errorAssertions -license -inconsistentReceiverName.ignore=session_serial_gen.go,team_member_serial_gen.go,user_serial_gen.go,utils_serial_gen.go ./...
- ifeq ($(BUILD_ENTERPRISE_READY),true)
+vet: setup-go-work ## Run mattermost go vet specific checks
+	cd ../tools/mattermost-govet && $(GO) install .
+	$(GO) vet -vettool=$(GOBIN)/mattermost-govet \
+		-structuredLogging \
+		-inconsistentReceiverName \
+		-emptyStrCmp \
+		-tFatal \
+		-configtelemetry \
+		-errorAssertions \
+		-requestCtxNaming \
+		-license \
+		-inconsistentReceiverName.ignore=session_serial_gen.go,team_member_serial_gen.go,user_serial_gen.go,utils_serial_gen.go \
+		-noSelectStar \
+		-concurrentIndex \
+		-concurrentIndex.path=./channels/db/migrations/ \
+		-concurrentIndex.minMigration=166 \
+		./...
+ifeq ($(BUILD_ENTERPRISE_READY),true)
   ifneq ($(MM_NO_ENTERPRISE_LINT),true)
-	$(GO) vet -vettool=$(GOBIN)/mattermost-govet -structuredLogging -inconsistentReceiverName -emptyStrCmp -tFatal -configtelemetry -errorAssertions -enterpriseLicense $(BUILD_ENTERPRISE_DIR)/...
+	$(GO) vet -vettool=$(GOBIN)/mattermost-govet -structuredLogging -inconsistentReceiverName -emptyStrCmp -tFatal -configtelemetry -errorAssertions -requestCtxNaming -enterpriseLicense $(BUILD_ENTERPRISE_DIR)/...
   endif
 endif
 
+vet-api: setup-go-work
 vet-api: export GO := $(GO)
 vet-api: export GOBIN := $(GOBIN)
 vet-api: export ROOT := $(ROOT)
 vet-api: ## Run mattermost go vet to verify api4 documentation, currently not passing
-	$(GO) install github.com/mattermost/mattermost-govet/v2@8e4d46e3fad88497dbfe073788a87e75bbae717c
+	cd ../tools/mattermost-govet && $(GO) install .
 	make -C ../api build
 	./scripts/vet-api-check.sh
 
 gen-serialized:	export LICENSE_HEADER:=$(LICENSE_HEADER)
-gen-serialized: ## Generates serialization methods for hot structs
+gen-serialized: setup-go-work ## Generates serialization methods for hot structs
 	# This tool only works at a file level, not at a package level.
 	# There will be some warnings about "unresolved identifiers",
 	# but that is because of the above problem. Since we are generating
@@ -811,12 +914,12 @@ ifeq ($(BUILD_ENTERPRISE_READY),true)
 	@! ag --ignore Makefile --ignore-dir runtime '(TODO|XXX|FIXME|"FIX ME")[: ]+' $(BUILD_ENTERPRISE_DIR)/
 endif
 
-mmctl-build: ## Compiles and generates the mmctl binary
-	go build -trimpath -ldflags '$(MMCTL_LDFLAGS)' -o bin/mmctl ./cmd/mmctl
+mmctl-build: setup-go-work ## Compiles and generates the mmctl binary
+	$(GO) build $(GOFLAGS) -trimpath -ldflags '$(MMCTL_LDFLAGS)' -o bin/mmctl ./cmd/mmctl
 
-mmctl-docs: ## Generate the mmctl docs
+mmctl-docs: setup-go-work ## Generate the mmctl docs
 	rm -rf ./cmd/mmctl/docs
-	cd ./cmd/mmctl && go run mmctl.go docs
+	cd ./cmd/mmctl && $(GO) run mmctl.go docs
 
 ## Help documentation à la https://marmelab.com/blog/2016/02/29/auto-documented-makefile.html
 help:
@@ -830,5 +933,9 @@ migrations-extract:
 	@echo "# Autogenerated file to synchronize migrations sequence in the PR workflow, please do not edit." > channels/db/migrations/migrations.list
 	find channels/db/migrations -maxdepth 2 -mindepth 2 | sort >> channels/db/migrations/migrations.list
 
-test-local-filestore: # Run tests for local filestore
+check-migration-changes: ## Fails if a Postgres migration added on top of the base branch was renumbered or renamed relative to master.
+	@echo "Checking for renumbered or renamed migrations"
+	./scripts/check_migration_changes.sh
+
+test-local-filestore: setup-go-work # Run tests for local filestore
 	$(GO) test ./platform/shared/filestore -run '^TestLocalFileBackend' -v

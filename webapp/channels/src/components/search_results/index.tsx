@@ -2,6 +2,7 @@
 // See LICENSE.txt for license information.
 
 import {connect} from 'react-redux';
+import type {ConnectedProps} from 'react-redux';
 
 import type {FileSearchResultItem} from '@mattermost/types/files';
 import type {Post} from '@mattermost/types/posts';
@@ -24,30 +25,23 @@ import {
 import type {GlobalState} from 'types/store';
 
 import SearchResults from './search_results';
-import type {StateProps, OwnProps} from './types';
+
+export type OwnProps = {
+    isPinnedPosts: boolean;
+};
 
 function makeMapStateToProps() {
     let results: Post[];
     let fileResults: FileSearchResultItem[];
     let files: FileSearchResultItem[] = [];
-    let posts: Post[];
     const addDateSeparatorsForSearchResults = makeAddDateSeparatorsForSearchResults();
 
     return function mapStateToProps(state: GlobalState, ownProps: OwnProps) {
         const newResults = getSearchResults(state);
 
-        // Cache posts and channels
+        // Cache results
         if (newResults && newResults !== results) {
             results = newResults;
-
-            posts = [];
-            results.forEach((post) => {
-                if (!post) {
-                    return;
-                }
-
-                posts.push(post);
-            });
 
             if (ownProps.isPinnedPosts) {
                 results = results.sort((postA: Post | FileSearchResultItem, postB: Post | FileSearchResultItem) => postB.create_at - postA.create_at);
@@ -95,5 +89,8 @@ function makeMapStateToProps() {
     };
 }
 
-// eslint-disable-next-line @typescript-eslint/ban-types
-export default connect<StateProps, {}, OwnProps, GlobalState>(makeMapStateToProps)(SearchResults);
+const connector = connect(makeMapStateToProps);
+
+export type PropsFromRedux = ConnectedProps<typeof connector>;
+
+export default connector(SearchResults);
