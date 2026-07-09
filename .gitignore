@@ -159,7 +159,6 @@ docker-compose.override.yaml
 .notice/
 .notice-work/
 .aider*
-.env
 .envrc
 .planning/
 
@@ -187,3 +186,4 @@ docs/site/node_modules/
 docs/api/reference/
 docs/pdf/build/
 docs/pdf/node_modules/
+config.bat
