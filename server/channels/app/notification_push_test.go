@@ -33,6 +33,7 @@ func TestDoesNotifyPropsAllowPushNotification(t *testing.T) {
 		userNotifySetting    string
 		channelNotifySetting string
 		withSystemPost       bool
+		withSilentPost       bool
 		wasMentioned         bool
 		isMuted              bool
 		expected             model.NotificationReason
@@ -56,6 +57,16 @@ func TestDoesNotifyPropsAllowPushNotification(t *testing.T) {
 			wasMentioned:         true,
 			isMuted:              false,
 			expected:             model.NotificationReasonSystemMessage,
+			isGM:                 false,
+		},
+		{
+			name:                 "When post is a silent notification",
+			userNotifySetting:    model.UserNotifyAll,
+			channelNotifySetting: "",
+			withSilentPost:       true,
+			wasMentioned:         true,
+			isMuted:              false,
+			expected:             model.NotificationReasonSilent,
 			isGM:                 false,
 		},
 		{
@@ -418,6 +429,10 @@ func TestDoesNotifyPropsAllowPushNotification(t *testing.T) {
 			if tc.withSystemPost {
 				post.Type = model.PostTypeJoinChannel
 			}
+			if tc.withSilentPost {
+				post.AddProp(model.PostPropsSilentNotification, true)
+				post.AddProp(model.PostPropsFromWebhook, "true")
+			}
 
 			channelNotifyProps := make(map[string]string)
 			if tc.channelNotifySetting != "" {
@@ -653,7 +668,7 @@ func TestGetPushNotificationMessage(t *testing.T) {
 	mockUserStore := mocks.UserStore{}
 	mockUserStore.On("Count", mock.Anything).Return(int64(10), nil)
 	mockPostStore := mocks.PostStore{}
-	mockPostStore.On("GetMaxPostSize").Return(65535, nil)
+	mockPostStore.On("GetMaxPostSize").Return(model.PostMessageMaxBytesV2, nil)
 	mockSystemStore := mocks.SystemStore{}
 	mockSystemStore.On("GetByName", "UpgradedFromTE").Return(&model.System{Name: "UpgradedFromTE", Value: "false"}, nil)
 	mockSystemStore.On("GetByName", "InstallationDate").Return(&model.System{Name: "InstallationDate", Value: "10"}, nil)
@@ -1309,6 +1324,42 @@ func TestShouldSendPushNotifications(t *testing.T) {
 		assert.True(t, result)
 	})
 
+	t.Run("should return false for silent post without force", func(t *testing.T) {
+		// User and channel are both configured to receive all-activity push;
+		// silent must suppress the push regardless of preferences.
+		user := &model.User{Id: model.NewId(), Email: "unit@test.com", NotifyProps: make(map[string]string)}
+		user.NotifyProps[model.PushNotifyProp] = model.UserNotifyAll
+
+		post := &model.Post{UserId: model.NewId(), ChannelId: model.NewId()}
+		post.AddProp(model.PostPropsSilentNotification, true)
+
+		channelNotifyProps := map[string]string{model.PushNotifyProp: model.ChannelNotifyAll}
+
+		status := &model.Status{UserId: user.Id, Status: model.StatusOnline, Manual: false, LastActivityAt: model.GetMillis(), ActiveChannel: ""}
+
+		result := th.App.ShouldSendPushNotification(th.Context, user, channelNotifyProps, true, status, post, false)
+		assert.False(t, result, "silent post must suppress push even when all-activity push is enabled")
+	})
+
+	t.Run("force notification overrides silent for push", func(t *testing.T) {
+		// Core override semantic: force must win over silent. User and
+		// channel push are both Off; force must still produce a push, even
+		// when silent is also set.
+		user := &model.User{Id: model.NewId(), Email: "unit@test.com", NotifyProps: make(map[string]string)}
+		user.NotifyProps[model.PushNotifyProp] = model.UserNotifyNone
+
+		post := &model.Post{UserId: model.NewId(), ChannelId: model.NewId()}
+		post.AddProp(model.PostPropsSilentNotification, true)
+		post.AddProp(model.PostPropsForceNotification, model.NewId())
+
+		channelNotifyProps := map[string]string{model.PushNotifyProp: model.ChannelNotifyNone, model.MarkUnreadNotifyProp: model.ChannelMarkUnreadMention}
+
+		status := &model.Status{UserId: user.Id, Status: model.StatusOnline, Manual: false, LastActivityAt: model.GetMillis(), ActiveChannel: post.ChannelId}
+
+		result := th.App.ShouldSendPushNotification(th.Context, user, channelNotifyProps, false, status, post, false)
+		assert.True(t, result, "force must win over silent — IsNotificationSuppressed returns false when both are set")
+	})
+
 	t.Run("should return false if force undefined", func(t *testing.T) {
 		user := &model.User{Id: model.NewId(), Email: "unit@test.com", NotifyProps: make(map[string]string)}
 		user.NotifyProps[model.PushNotifyProp] = model.UserNotifyNone
@@ -1502,7 +1553,7 @@ func TestClearPushNotificationSync(t *testing.T) {
 	mockUserStore.On("Count", mock.Anything).Return(int64(10), nil)
 	mockUserStore.On("GetUnreadCount", mock.AnythingOfType("string"), mock.AnythingOfType("bool")).Return(int64(1), nil)
 	mockPostStore := mocks.PostStore{}
-	mockPostStore.On("GetMaxPostSize").Return(65535, nil)
+	mockPostStore.On("GetMaxPostSize").Return(model.PostMessageMaxBytesV2, nil)
 	mockSystemStore := mocks.SystemStore{}
 	mockSystemStore.On("GetByName", "UpgradedFromTE").Return(&model.System{Name: "UpgradedFromTE", Value: "false"}, nil)
 	mockSystemStore.On("GetByName", "InstallationDate").Return(&model.System{Name: "InstallationDate", Value: "10"}, nil)
@@ -1582,7 +1633,7 @@ func TestUpdateMobileAppBadgeSync(t *testing.T) {
 	mockUserStore.On("Count", mock.Anything).Return(int64(10), nil)
 	mockUserStore.On("GetUnreadCount", mock.AnythingOfType("string"), mock.AnythingOfType("bool")).Return(int64(1), nil)
 	mockPostStore := mocks.PostStore{}
-	mockPostStore.On("GetMaxPostSize").Return(65535, nil)
+	mockPostStore.On("GetMaxPostSize").Return(model.PostMessageMaxBytesV2, nil)
 	mockSystemStore := mocks.SystemStore{}
 	mockSystemStore.On("GetByName", "UpgradedFromTE").Return(&model.System{Name: "UpgradedFromTE", Value: "false"}, nil)
 	mockSystemStore.On("GetByName", "InstallationDate").Return(&model.System{Name: "InstallationDate", Value: "10"}, nil)
@@ -1658,7 +1709,7 @@ func TestSendAckToPushProxy(t *testing.T) {
 	mockUserStore := mocks.UserStore{}
 	mockUserStore.On("Count", mock.Anything).Return(int64(10), nil)
 	mockPostStore := mocks.PostStore{}
-	mockPostStore.On("GetMaxPostSize").Return(65535, nil)
+	mockPostStore.On("GetMaxPostSize").Return(model.PostMessageMaxBytesV2, nil)
 	mockSystemStore := mocks.SystemStore{}
 	mockSystemStore.On("GetByName", "UpgradedFromTE").Return(&model.System{Name: "UpgradedFromTE", Value: "false"}, nil)
 	mockSystemStore.On("GetByName", "InstallationDate").Return(&model.System{Name: "InstallationDate", Value: "10"}, nil)
@@ -1906,7 +1957,7 @@ func BenchmarkPushNotificationThroughput(b *testing.B) {
 	mockUserStore.On("Count", mock.Anything).Return(int64(10), nil)
 	mockUserStore.On("GetUnreadCount", mock.AnythingOfType("string"), mock.AnythingOfType("bool")).Return(int64(1), nil)
 	mockPostStore := mocks.PostStore{}
-	mockPostStore.On("GetMaxPostSize").Return(65535, nil)
+	mockPostStore.On("GetMaxPostSize").Return(model.PostMessageMaxBytesV2, nil)
 	mockSystemStore := mocks.SystemStore{}
 	mockSystemStore.On("GetByName", "UpgradedFromTE").Return(&model.System{Name: "UpgradedFromTE", Value: "false"}, nil)
 	mockSystemStore.On("GetByName", "InstallationDate").Return(&model.System{Name: "InstallationDate", Value: "10"}, nil)
